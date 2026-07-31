@@ -1,0 +1,15 @@
+{
+  "originHash" : "2bc6f8079700b2cea8cc90bc94c962797c5a4afbec400274fed87f0dcd43f09e",
+  "pins" : [
+    {
+      "identity" : "immersiverpckit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kanakanho/ImmersiveRPCKit",
+      "state" : {
+        "branch" : "main",
+        "revision" : "34cb9fe0cee9304507c10fb889f2b3b8ca74d7d9"
+      }
+    }
+  ],
+  "version" : 3
+}

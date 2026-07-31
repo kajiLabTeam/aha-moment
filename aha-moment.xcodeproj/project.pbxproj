@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B733265E301C62E4001C8873 /* RealityKitContent in Frameworks */ = {isa = PBXBuildFile; productRef = B733265D301C62E4001C8873 /* RealityKitContent */; };
+		B7332681301C636B001C8873 /* ImmersiveRPCKit in Frameworks */ = {isa = PBXBuildFile; productRef = B7332680301C636B001C8873 /* ImmersiveRPCKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +59,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B733265E301C62E4001C8873 /* RealityKitContent in Frameworks */,
+				B7332681301C636B001C8873 /* ImmersiveRPCKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -119,6 +121,7 @@
 			name = "aha-moment";
 			packageProductDependencies = (
 				B733265D301C62E4001C8873 /* RealityKitContent */,
+				B7332680301C636B001C8873 /* ImmersiveRPCKit */,
 			);
 			productName = "aha-moment";
 			productReference = B7332658301C62E4001C8873 /* aha-moment.app */;
@@ -175,6 +178,9 @@
 			);
 			mainGroup = B733264F301C62E4001C8873;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B733267F301C636B001C8873 /* XCRemoteSwiftPackageReference "ImmersiveRPCKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B7332659301C62E4001C8873 /* Products */;
 			projectDirPath = "";
@@ -240,6 +246,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
+				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "\"座標共有のために手の位置を使用します\"";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "\"近くのデバイスと通信するために使用します\"";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -269,6 +277,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
+				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "\"座標共有のために手の位置を使用します\"";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "\"近くのデバイスと通信するために使用します\"";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -486,10 +496,26 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		B733267F301C636B001C8873 /* XCRemoteSwiftPackageReference "ImmersiveRPCKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kanakanho/ImmersiveRPCKit";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		B733265D301C62E4001C8873 /* RealityKitContent */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RealityKitContent;
+		};
+		B7332680301C636B001C8873 /* ImmersiveRPCKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B733267F301C636B001C8873 /* XCRemoteSwiftPackageReference "ImmersiveRPCKit" */;
+			productName = ImmersiveRPCKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
