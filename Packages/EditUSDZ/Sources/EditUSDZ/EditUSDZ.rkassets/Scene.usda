@@ -1,0 +1,73 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "Reality Composer Pro Version 2.0 (494.8.1)"
+    }
+    defaultPrim = "Root"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "Root"
+{
+    def "model3" (
+        active = true
+        references = @model3.usdz@
+    )
+    {
+        reorder nameChildren = ["Materials", "Geometry", "Material"]
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (0.051214363, -0.05712475, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        over "Geometry"
+        {
+            over "Mesh" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                rel material:binding = </Root/model3/Materials/Texture> (
+                    bindMaterialAs = "weakerThanDescendants"
+                )
+                float3 xformOp:scale = (2, 2, 2)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+            }
+        }
+
+        over "Materials"
+        {
+            over "Texture"
+            {
+                token outputs:mtlx:surface
+                token outputs:realitykit:vertex
+
+                over "surfaceShader"
+                {
+                    color3f inputs:emissiveColor = (0.8115335, 0.26284227, 0.19427352) (
+                        colorSpace = "srgb_displayp3"
+                    )
+                }
+            }
+        }
+
+        def Material "Material"
+        {
+            token outputs:mtlx:surface
+            token outputs:realitykit:vertex
+            token outputs:surface.connect = </Root/model3/Material/UsdPreviewSurface.outputs:surface>
+
+            def Shader "UsdPreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.6600013, 0.677992, 0.64443904) (
+                    colorSpace = "srgb_displayp3"
+                )
+                color3f inputs:emissiveColor = (0, 0, 0) (
+                    colorSpace = "srgb_displayp3"
+                )
+                token outputs:surface
+            }
+        }
+    }
+}
+

@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		B733265E301C62E4001C8873 /* RealityKitContent in Frameworks */ = {isa = PBXBuildFile; productRef = B733265D301C62E4001C8873 /* RealityKitContent */; };
 		B7332681301C636B001C8873 /* ImmersiveRPCKit in Frameworks */ = {isa = PBXBuildFile; productRef = B7332680301C636B001C8873 /* ImmersiveRPCKit */; };
+		B733268530207E72001C8873 /* model3.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B733268430207E72001C8873 /* model3.usdz */; };
+		B733268730207E81001C8873 /* model3_sized_red.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B733268630207E81001C8873 /* model3_sized_red.usdz */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,6 +27,8 @@
 		B7332658301C62E4001C8873 /* aha-moment.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "aha-moment.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B733265C301C62E4001C8873 /* RealityKitContent */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = RealityKitContent; sourceTree = "<group>"; };
 		B733266C301C62E6001C8873 /* aha-momentTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "aha-momentTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B733268430207E72001C8873 /* model3.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model3.usdz; sourceTree = "<group>"; };
+		B733268630207E81001C8873 /* model3_sized_red.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model3_sized_red.usdz; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -80,6 +84,8 @@
 				B733265B301C62E4001C8873 /* Packages */,
 				B733266F301C62E6001C8873 /* aha-momentTests */,
 				B7332659301C62E4001C8873 /* Products */,
+				B733268430207E72001C8873 /* model3.usdz */,
+				B733268630207E81001C8873 /* model3_sized_red.usdz */,
 			);
 			sourceTree = "<group>";
 		};
@@ -197,6 +203,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B733268730207E81001C8873 /* model3_sized_red.usdz in Resources */,
+				B733268530207E72001C8873 /* model3.usdz in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

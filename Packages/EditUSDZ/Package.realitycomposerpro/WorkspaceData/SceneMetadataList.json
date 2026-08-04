@@ -1,0 +1,43 @@
+{
+  "A2896B36-F18A-4B25-BF51-9E9029925EC3" : {
+    "objectMetadataList" : [
+      [
+        "A2896B36-F18A-4B25-BF51-9E9029925EC3",
+        "Root",
+        "model3"
+      ],
+      {
+        "isExpanded" : true,
+        "isLocked" : false
+      },
+      [
+        "A2896B36-F18A-4B25-BF51-9E9029925EC3",
+        "Root",
+        "model3",
+        "Materials"
+      ],
+      {
+        "isExpanded" : true,
+        "isLocked" : false
+      },
+      [
+        "A2896B36-F18A-4B25-BF51-9E9029925EC3",
+        "Root",
+        "model3",
+        "Geometry"
+      ],
+      {
+        "isExpanded" : true,
+        "isLocked" : false
+      },
+      [
+        "A2896B36-F18A-4B25-BF51-9E9029925EC3",
+        "Root"
+      ],
+      {
+        "isExpanded" : true,
+        "isLocked" : false
+      }
+    ]
+  }
+}

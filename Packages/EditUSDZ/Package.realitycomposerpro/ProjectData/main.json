@@ -1,0 +1,11 @@
+{
+  "pathsToIds" : {
+    "EditUSDZ\/Sources\/EditUSDZ\/EditUSDZ.rkassets\/Scene.usda" : "A2896B36-F18A-4B25-BF51-9E9029925EC3",
+    "EditUSDZ\/Sources\/EditUSDZ\/EditUSDZ.rkassets\/Untitled%20Scene.usda" : "EA0B1C3F-5DA9-4E66-85F3-61AD4D6D62E3"
+  },
+  "projectID" : 393893568297965618,
+  "uuidToIntID" : {
+    "A2896B36-F18A-4B25-BF51-9E9029925EC3" : -4978617551209029077,
+    "EA0B1C3F-5DA9-4E66-85F3-61AD4D6D62E3" : 2371031720659557221
+  }
+}
