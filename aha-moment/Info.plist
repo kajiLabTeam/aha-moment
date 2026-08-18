@@ -24,5 +24,13 @@
 			</array>
 		</dict>
 	</dict>
+	<key>CFBundleIdentifier</key>
+	<string></string>
+	<key>NSWorldSensingUsageDescription</key>
+	<string>部屋の形状認識</string>
+	<key>CFBundleExecutable</key>
+	<string></string>
+	<key>NSHandsTrackingUsageDescription</key>
+	<string>指差し動作を行うために手の動きをトラッキング</string>
 </dict>
 </plist>
