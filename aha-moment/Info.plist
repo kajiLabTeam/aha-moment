@@ -27,7 +27,7 @@
 	<key>CFBundleIdentifier</key>
 	<string></string>
 	<key>NSWorldSensingUsageDescription</key>
-	<string>部屋の形状認識</string>
+	<string>オブジェクトの配置場所を記憶するために空間認識を使用します。</string>
 	<key>CFBundleExecutable</key>
 	<string></string>
 	<key>NSHandsTrackingUsageDescription</key>

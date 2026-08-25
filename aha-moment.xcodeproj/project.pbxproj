@@ -13,6 +13,7 @@
 		B733268730207E81001C8873 /* model3_sized_red.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B733268630207E81001C8873 /* model3_sized_red.usdz */; };
 		B7ACD2FC30344D6600C200C4 /* model_tape.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7ACD2FB30344D6600C200C4 /* model_tape.usdz */; };
 		B7ACD2FE30344D7500C200C4 /* model_fab.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7ACD2FD30344D7500C200C4 /* model_fab.usdz */; };
+		B7ACD3003034640300C200C4 /* model_bottole.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7ACD2FF3034640300C200C4 /* model_bottole.usdz */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -33,6 +34,7 @@
 		B733268630207E81001C8873 /* model3_sized_red.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model3_sized_red.usdz; sourceTree = "<group>"; };
 		B7ACD2FB30344D6600C200C4 /* model_tape.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_tape.usdz; sourceTree = "<group>"; };
 		B7ACD2FD30344D7500C200C4 /* model_fab.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_fab.usdz; sourceTree = "<group>"; };
+		B7ACD2FF3034640300C200C4 /* model_bottole.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_bottole.usdz; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -92,6 +94,7 @@
 				B733268630207E81001C8873 /* model3_sized_red.usdz */,
 				B7ACD2FB30344D6600C200C4 /* model_tape.usdz */,
 				B7ACD2FD30344D7500C200C4 /* model_fab.usdz */,
+				B7ACD2FF3034640300C200C4 /* model_bottole.usdz */,
 			);
 			sourceTree = "<group>";
 		};
@@ -209,6 +212,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B7ACD3003034640300C200C4 /* model_bottole.usdz in Resources */,
 				B7ACD2FC30344D6600C200C4 /* model_tape.usdz in Resources */,
 				B733268730207E81001C8873 /* model3_sized_red.usdz in Resources */,
 				B733268530207E72001C8873 /* model3.usdz in Resources */,

@@ -13,10 +13,14 @@ struct aha_momentApp: App {
     
     @State private var appModel = AppModel()
     
+    // 🌟 追加: アプリ全体で1つの GameManager を保持する
+    @State private var gameManager = GameManager()
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(appModel)
+                .environment(gameManager) // 🌟 ContentViewに渡す
         }
         
         ImmersiveSpace(id: appModel.immersiveSpaceID) {
@@ -26,8 +30,8 @@ struct aha_momentApp: App {
             ) {
                 ImmersiveView()
                     .environment(appModel)
+                    .environment(gameManager) // 🌟 ImmersiveViewに渡す
             }
-            
             .onAppear {
                 appModel.immersiveSpaceState = .open
             }
