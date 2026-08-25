@@ -303,3 +303,5 @@ struct ImmersiveView: View {
         gameManager.saveScale(entity.scale, for: modelID)
     }
 }
+
+// 原点を４つ設定する方法でいくmain
