@@ -15,6 +15,9 @@ struct ImmersiveView: View {
     @State private var laserEntity = Entity()
     @State private var session = ARKitSession()
     @State private var handTracking = HandTrackingProvider()
+    @State private var latestIndexTipPosition: SIMD3<Float>?
+    @State private var lostFrameCount = 0                    // ← 追加
+    private let lostFrameThreshold = 5 // 約0.1秒分(90Hz想定)  // ← 追加
     
     var body: some View {
         RealityView { content, attachments in
@@ -22,23 +25,9 @@ struct ImmersiveView: View {
                 let pair = AhaObjectPair(id: def.id)
                 await pair.loadModels(originalName: def.original, alteredName: def.altered)
 
-                // Immersive Space のワールド原点は show のたびに変わり得る。そこで、
-                // Space の親エンティティ基準のローカル座標を保存・復元する。
                 content.add(pair.rootEntity)
-
-                if let savedPos = gameManager.getPosition(for: def.id) {
-                    pair.rootEntity.position = savedPos
-                } else {
-                    pair.rootEntity.position = SIMD3(x: 0, y: 1.0, z: -1.0)
-                }
-                
-                if let savedRot = gameManager.getRotation(for: def.id) {
-                    pair.rootEntity.orientation = savedRot
-                }
-                
-                if let savedScale = gameManager.getScale(for: def.id) {
-                    pair.rootEntity.scale = savedScale
-                }
+                // 4点キャリブレーションが終わるまでモデルは表示しない。
+                pair.rootEntity.isEnabled = false
                 
                 loadedPairs[def.id] = pair
                 
@@ -62,23 +51,38 @@ struct ImmersiveView: View {
             content.add(laserEntity)
             
         } update: { content, attachments in
+            applyCalibratedObjectPositions()
             if let targetPair = loadedPairs[gameManager.targetId] {
                 targetPair.updateProgress(gameManager.transitionProgress)
             }
         } attachments: {
             Attachment(id: "GameUI") {
                 ZStack {
-                    Button(action: {
-                        gameManager.isPositionLocked = true
-                        gameManager.startTransition()
-                    }) {
-                        Text("配置を確定してスタート")
-                            .font(.title)
-                            .padding()
+                    if !gameManager.isCalibrated {
+                        VStack(spacing: 16) {
+                            Text("基準点 \(gameManager.nextCalibrationPointNumber) / 4")
+                                .font(.title)
+                            Text(gameManager.calibrationInstruction)
+                                .font(.body)
+                            Button("最初から取り直す") {
+                                gameManager.restartCalibration()
+                            }
+                        }
+                        .padding()
+                        .glassBackgroundEffect()
+                    } else {
+                        Button(action: {
+                            gameManager.isPositionLocked = true
+                            gameManager.startTransition()
+                        }) {
+                            Text("配置を確定してスタート")
+                                .font(.title)
+                                .padding()
+                        }
+                        .glassBackgroundEffect()
+                        .opacity(gameManager.isPositionLocked ? 0.0 : 1.0)
+                        .disabled(gameManager.isPositionLocked)
                     }
-                    .glassBackgroundEffect()
-                    .opacity(gameManager.isPositionLocked ? 0.0 : 1.0)
-                    .disabled(gameManager.isPositionLocked)
                     
                     if gameManager.hasFoundObject {
                         VStack(spacing: 20) {
@@ -110,7 +114,9 @@ struct ImmersiveView: View {
             DragGesture(minimumDistance: 10)
                 .targetedToAnyEntity()
                 .onChanged { value in
-                    guard !gameManager.isPositionLocked else { return }
+                    // キャリブレーション後のモデル位置は研究室座標から決定するため、
+                    // ドラッグでは動かさない。
+                    guard !gameManager.isCalibrated, !gameManager.isPositionLocked else { return }
                     if let targetRoot = findRootEntity(for: value.entity) {
                         
                         if dragOffsets[targetRoot.id] == nil {
@@ -127,14 +133,9 @@ struct ImmersiveView: View {
                     }
                 }
                 .onEnded { value in
-                    if let targetRoot = findRootEntity(for: value.entity),
-                       let modelID = loadedPairs.first(where: { $0.value.rootEntity == targetRoot })?.key {
+                    if let targetRoot = findRootEntity(for: value.entity) {
                         
                         dragOffsets.removeValue(forKey: targetRoot.id)
-                        
-                        saveTransform(of: targetRoot, for: modelID)
-                        
-                        print("👆 [Drag End] \(modelID) を保存しました: \(targetRoot.position)")
                     }
                 }
         )
@@ -143,7 +144,7 @@ struct ImmersiveView: View {
                 .simultaneously(with: MagnifyGesture())
                 .targetedToAnyEntity()
                 .onChanged { value in
-                    guard !gameManager.isPositionLocked else { return }
+                    guard !gameManager.isCalibrated, !gameManager.isPositionLocked else { return }
                     if let targetRoot = findRootEntity(for: value.entity) {
                         
                         if initialOrientations[targetRoot.id] == nil {
@@ -166,13 +167,11 @@ struct ImmersiveView: View {
                     }
                 }
                 .onEnded { value in
-                    if let targetRoot = findRootEntity(for: value.entity),
-                       let modelID = loadedPairs.first(where: { $0.value.rootEntity == targetRoot })?.key {
+                    if let targetRoot = findRootEntity(for: value.entity) {
                         
                         initialOrientations.removeValue(forKey: targetRoot.id)
                         initialScales.removeValue(forKey: targetRoot.id)
                         
-                        saveTransform(of: targetRoot, for: modelID)
                     }
                 }
         )
@@ -189,15 +188,23 @@ struct ImmersiveView: View {
                 var wasPointing = false
                 for await update in handTracking.anchorUpdates {
                     let anchor = update.anchor
-                    guard anchor.isTracked, anchor.chirality == .right else { continue }
+                    guard anchor.isTracked, anchor.chirality == .right else {
+                        await MainActor.run {
+                            laserEntity.isEnabled = false
+                            gameManager.resetCalibrationFingerTracking()
+                        }
+                        continue
+                    }
                     
-                    guard let tip = anchor.handSkeleton?.joint(.indexFingerTip),
-                          let knuckle = anchor.handSkeleton?.joint(.indexFingerKnuckle),
-                          let thumb = anchor.handSkeleton?.joint(.thumbTip),
-                          let middle = anchor.handSkeleton?.joint(.middleFingerTip),
-                          let wrist = anchor.handSkeleton?.joint(.wrist),
-                          tip.isTracked, knuckle.isTracked, thumb.isTracked, middle.isTracked, wrist.isTracked else {
-                        await MainActor.run { laserEntity.isEnabled = false }
+                    guard let tip = anchor.handSkeleton?.joint(.indexFingerTip), tip.isTracked else {
+                        lostFrameCount += 1
+                        await MainActor.run {
+                            if lostFrameCount > lostFrameThreshold {
+                                laserEntity.isEnabled = false
+                            }
+                            latestIndexTipPosition = nil
+                            gameManager.resetCalibrationFingerTracking()
+                        }
                         continue
                     }
                     
@@ -207,21 +214,33 @@ struct ImmersiveView: View {
                     }
                     
                     let tipPos = getPos(tip)
-                    let knucklePos = getPos(knuckle)
-                    let thumbPos = getPos(thumb)
-                    let middlePos = getPos(middle)
-                    let wristPos = getPos(wrist)
-                    
-                    let isPinching = distance(tipPos, thumbPos) < 0.03
-                    let indexToWrist = distance(tipPos, wristPos)
-                    let middleToWrist = distance(middlePos, wristPos)
-                    let isPointingPose = indexToWrist > (middleToWrist + 0.04)
-                    
-                    if isPinching || !isPointingPose {
+
+                    await MainActor.run {
+                        latestIndexTipPosition = tipPos
+                        gameManager.updateCalibrationFingerPosition(tipPos)
+                    }
+
+                    // キャリブレーション中はレーザーを使わず、静止した指先だけを記録する。
+                    guard gameManager.isCalibrated else {
                         await MainActor.run { laserEntity.isEnabled = false }
-                        wasPointing = false
                         continue
                     }
+
+                    guard let knuckle = anchor.handSkeleton?.joint(.indexFingerKnuckle),
+                          knuckle.isTracked else {
+                        lostFrameCount += 1
+                        await MainActor.run {
+                            if lostFrameCount > lostFrameThreshold {
+                                laserEntity.isEnabled = false
+                                wasPointing = false
+                            }
+                        }
+                        continue
+                    }
+
+                    let knucklePos = getPos(knuckle)
+                    
+                    lostFrameCount = 0   // ← 追加：両方取れたので連続ロストカウントをリセット
                     
                     let forwardDirection = normalize(tipPos - knucklePos)
                     let visualDirection = normalize(knucklePos - tipPos)
@@ -271,14 +290,11 @@ struct ImmersiveView: View {
         }
         .realityViewLayoutBehavior(.fixedSize)
         .volumeBaseplateVisibility(.hidden)
+        .onAppear {
+            gameManager.restartCalibration()
+        }
         .onDisappear {
-            // Hide 中にジェスチャーが中断されても、最後に表示されていた姿勢を保存する。
-            for (modelID, pair) in loadedPairs {
-                saveTransform(of: pair.rootEntity, for: modelID)
-            }
-            gameManager.isPositionLocked = false
-            gameManager.hasFoundObject = false
-            gameManager.transitionProgress = 0.0
+            latestIndexTipPosition = nil
             gameManager.pickRandomTarget()
         }
     }
@@ -297,11 +313,20 @@ struct ImmersiveView: View {
         return nil
     }
 
-    private func saveTransform(of entity: Entity, for modelID: String) {
-        gameManager.savePosition(entity.position, for: modelID)
-        gameManager.saveRotation(entity.orientation, for: modelID)
-        gameManager.saveScale(entity.scale, for: modelID)
+    private func applyCalibratedObjectPositions() {
+        for (modelID, pair) in loadedPairs {
+            guard let position = gameManager.calibratedPosition(for: modelID) else {
+                pair.rootEntity.isEnabled = false
+                continue
+            }
+            // 基準点は ARKit のワールド座標で取得しているため、親のローカル座標へ
+            // 代入せず、同じワールド座標系 (nil) で配置する。
+            pair.rootEntity.setPosition(position, relativeTo: nil)
+            pair.rootEntity.scale = gameManager.scale(for: modelID)
+            pair.rootEntity.orientation = gameManager.orientation(for: modelID)
+            pair.rootEntity.isEnabled = true
+        }
     }
 }
 
-// 原点を４つ設定する方法でいくmain
+// 基準点を４つ設定する方法でいくmain

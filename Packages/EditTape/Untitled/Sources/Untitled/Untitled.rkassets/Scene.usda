@@ -1,0 +1,43 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "Reality Composer Pro Version 2.0 (494.8.1)"
+    }
+    defaultPrim = "Root"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "Root"
+{
+    def "model_tape" (
+        active = true
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @model_tape.usdz@
+    )
+    {
+        rel material:binding = </Root/model_tape/Materials/Texture> (
+            bindMaterialAs = "weakerThanDescendants"
+        )
+        float3 xformOp:scale = (1, 1, 1)
+        float3 xformOp:translate = (-3.216071, 1.1920929e-7, -1.0865277)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        over "Materials"
+        {
+            over "Texture"
+            {
+                token outputs:mtlx:surface
+                token outputs:realitykit:vertex
+
+                over "surfaceShader"
+                {
+                    color3f inputs:emissiveColor = (0.8446564, 0.51457053, 1) (
+                        colorSpace = "srgb_texture"
+                    )
+                }
+            }
+        }
+    }
+}
+

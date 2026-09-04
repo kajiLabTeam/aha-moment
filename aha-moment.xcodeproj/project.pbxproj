@@ -11,6 +11,7 @@
 		B7332681301C636B001C8873 /* ImmersiveRPCKit in Frameworks */ = {isa = PBXBuildFile; productRef = B7332680301C636B001C8873 /* ImmersiveRPCKit */; };
 		B733268530207E72001C8873 /* model3.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B733268430207E72001C8873 /* model3.usdz */; };
 		B733268730207E81001C8873 /* model3_sized_red.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B733268630207E81001C8873 /* model3_sized_red.usdz */; };
+		B7957F1C304A895600229EF6 /* model_tape_alt.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7957F1B304A895600229EF6 /* model_tape_alt.usdz */; };
 		B7ACD2FC30344D6600C200C4 /* model_tape.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7ACD2FB30344D6600C200C4 /* model_tape.usdz */; };
 		B7ACD2FE30344D7500C200C4 /* model_fab.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7ACD2FD30344D7500C200C4 /* model_fab.usdz */; };
 		B7ACD3003034640300C200C4 /* model_bottole.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B7ACD2FF3034640300C200C4 /* model_bottole.usdz */; };
@@ -32,6 +33,7 @@
 		B733266C301C62E6001C8873 /* aha-momentTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "aha-momentTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B733268430207E72001C8873 /* model3.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model3.usdz; sourceTree = "<group>"; };
 		B733268630207E81001C8873 /* model3_sized_red.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model3_sized_red.usdz; sourceTree = "<group>"; };
+		B7957F1B304A895600229EF6 /* model_tape_alt.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_tape_alt.usdz; sourceTree = "<group>"; };
 		B7ACD2FB30344D6600C200C4 /* model_tape.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_tape.usdz; sourceTree = "<group>"; };
 		B7ACD2FD30344D7500C200C4 /* model_fab.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_fab.usdz; sourceTree = "<group>"; };
 		B7ACD2FF3034640300C200C4 /* model_bottole.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_bottole.usdz; sourceTree = "<group>"; };
@@ -93,6 +95,7 @@
 				B733268430207E72001C8873 /* model3.usdz */,
 				B733268630207E81001C8873 /* model3_sized_red.usdz */,
 				B7ACD2FB30344D6600C200C4 /* model_tape.usdz */,
+				B7957F1B304A895600229EF6 /* model_tape_alt.usdz */,
 				B7ACD2FD30344D7500C200C4 /* model_fab.usdz */,
 				B7ACD2FF3034640300C200C4 /* model_bottole.usdz */,
 			);
@@ -212,6 +215,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B7957F1C304A895600229EF6 /* model_tape_alt.usdz in Resources */,
 				B7ACD3003034640300C200C4 /* model_bottole.usdz in Resources */,
 				B7ACD2FC30344D6600C200C4 /* model_tape.usdz in Resources */,
 				B733268730207E81001C8873 /* model3_sized_red.usdz in Resources */,

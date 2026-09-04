@@ -1,0 +1,33 @@
+{
+  "D2F5DFE4-33A1-4D43-9C1D-29EC7796324A" : {
+    "objectMetadataList" : [
+      [
+        "D2F5DFE4-33A1-4D43-9C1D-29EC7796324A",
+        "Root"
+      ],
+      {
+        "isExpanded" : true,
+        "isLocked" : false
+      },
+      [
+        "D2F5DFE4-33A1-4D43-9C1D-29EC7796324A",
+        "Root",
+        "model_tape",
+        "Materials"
+      ],
+      {
+        "isExpanded" : true,
+        "isLocked" : false
+      },
+      [
+        "D2F5DFE4-33A1-4D43-9C1D-29EC7796324A",
+        "Root",
+        "model_tape"
+      ],
+      {
+        "isExpanded" : true,
+        "isLocked" : false
+      }
+    ]
+  }
+}

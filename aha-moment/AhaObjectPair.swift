@@ -26,6 +26,7 @@ class AhaObjectPair {
             orig.components.set(OpacityComponent(opacity: 1.0))
             self.originalEntity = orig
             rootEntity.addChild(orig)
+            alignVisualCenterWithRoot(of: orig)
         }
         
         if let alt = try? await altTask {
@@ -35,6 +36,7 @@ class AhaObjectPair {
             alt.components.set(OpacityComponent(opacity: 0.0))
             self.alteredEntity = alt
             rootEntity.addChild(alt)
+            alignVisualCenterWithRoot(of: alt)
         }
     }
     
@@ -42,5 +44,12 @@ class AhaObjectPair {
     func updateProgress(_ progress: Float) {
         originalEntity?.components[OpacityComponent.self]?.opacity = 1.0 - progress
         alteredEntity?.components[OpacityComponent.self]?.opacity = progress
+    }
+
+    /// USDZごとに異なる内部ピボットを補正し、モデルの見た目の中心を rootEntity の
+    /// 原点へそろえる。rootEntity を研究室座標 (0, 0, 0) に置けば、表示中心も同位置になる。
+    private func alignVisualCenterWithRoot(of entity: Entity) {
+        let visualCenter = entity.visualBounds(relativeTo: rootEntity).center
+        entity.position -= visualCenter
     }
 }
