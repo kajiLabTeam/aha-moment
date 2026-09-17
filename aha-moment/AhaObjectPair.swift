@@ -24,6 +24,7 @@ class AhaObjectPair {
             orig.generateCollisionShapes(recursive: true)
             orig.components.set(InputTargetComponent())
             orig.components.set(OpacityComponent(opacity: 1.0))
+            orig.components.set(GroundingShadowComponent(castsShadow: true))
             self.originalEntity = orig
             rootEntity.addChild(orig)
             alignVisualCenterWithRoot(of: orig)
@@ -34,6 +35,7 @@ class AhaObjectPair {
             alt.generateCollisionShapes(recursive: true)
             alt.components.set(InputTargetComponent())
             alt.components.set(OpacityComponent(opacity: 0.0))
+            alt.components.set(GroundingShadowComponent(castsShadow: true))
             self.alteredEntity = alt
             rootEntity.addChild(alt)
             alignVisualCenterWithRoot(of: alt)

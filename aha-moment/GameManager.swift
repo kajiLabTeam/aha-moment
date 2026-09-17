@@ -57,10 +57,17 @@ class GameManager {
     var isPositionLocked = false
     var hasFoundObject = false
     var transitionProgress: Float = 0.0
+    var isMenuVisible = true
+    private(set) var menuPresentationRequest = 0
+    private var transitionTask: Task<Void, Never>?
 
     private(set) var calibrationPoints: [SIMD3<Float>] = []
     private(set) var isCalibrated = false
+    var isAdjustmentMode = false
+    var isOcclusionBoxPlacementMode = false
+    private(set) var requestedOcclusionBoxCount = 0
     private var laboratoryToARTransform = matrix_identity_float4x4
+    private var positionAdjustments: [String: SIMD3<Float>] = [:]
     private var stableFingerPosition: SIMD3<Float>?
     private var stableFingerSince: Date?
     private var stableFingerPositionSum = SIMD3<Float>(repeating: 0)
@@ -98,10 +105,20 @@ class GameManager {
     func restartCalibration() {
         calibrationPoints.removeAll()
         isCalibrated = false
+        isAdjustmentMode = false
+        isOcclusionBoxPlacementMode = false
+        requestedOcclusionBoxCount = 0
         laboratoryToARTransform = matrix_identity_float4x4
+        positionAdjustments.removeAll()
         isPositionLocked = false
         hasFoundObject = false
         transitionProgress = 0
+        isMenuVisible = true
+        menuPresentationRequest += 1
+        transitionTask?.cancel()
+        transitionTask = nil
+        lastCapturedFingerPosition = nil
+        isWaitingForFingerToMove = false
         resetCalibrationFingerTracking()
     }
 
@@ -154,7 +171,7 @@ class GameManager {
         print("📍 基準点\(calibrationPoints.count) を取得: \(point)")
 
         guard calibrationPoints.count == laboratoryReferencePoints.count else { return }
-        guard let transform = makeAffineTransform(
+        guard let transform = makeRigidTransform(
             from: laboratoryReferencePoints,
             to: calibrationPoints
         ) else {
@@ -166,6 +183,8 @@ class GameManager {
 
         laboratoryToARTransform = transform
         isCalibrated = true
+        // キャリブレーション完了後の設定メニューは、手のひらジェスチャーで呼び出す。
+        isMenuVisible = false
         print("✅ 4点キャリブレーション完了")
     }
 
@@ -179,7 +198,58 @@ class GameManager {
     func calibratedPosition(for modelID: String) -> SIMD3<Float>? {
         guard isCalibrated, let laboratoryPosition = laboratoryObjectPositions[modelID] else { return nil }
         let homogeneousPosition = laboratoryToARTransform * SIMD4(laboratoryPosition, 1)
-        return SIMD3(homogeneousPosition.x, homogeneousPosition.y, homogeneousPosition.z)
+        let basePosition = SIMD3(homogeneousPosition.x, homogeneousPosition.y, homogeneousPosition.z)
+        return basePosition + (positionAdjustments[modelID] ?? .zero)
+    }
+
+    /// 微調整モードでドラッグした最終ワールド座標を、基準配置からの差分として保存する。
+    func savePositionAdjustment(_ worldPosition: SIMD3<Float>, for modelID: String) {
+        guard isCalibrated, let laboratoryPosition = laboratoryObjectPositions[modelID] else { return }
+        let homogeneousPosition = laboratoryToARTransform * SIMD4(laboratoryPosition, 1)
+        let basePosition = SIMD3(homogeneousPosition.x, homogeneousPosition.y, homogeneousPosition.z)
+        positionAdjustments[modelID] = worldPosition - basePosition
+        print("🔧 \(modelID) 微調整: \(positionAdjustments[modelID]!)")
+    }
+
+    func clearPositionAdjustments() {
+        positionAdjustments.removeAll()
+    }
+
+    func requestOcclusionBox() {
+        isAdjustmentMode = false
+        isOcclusionBoxPlacementMode = true
+        requestedOcclusionBoxCount += 1
+    }
+
+    func finishOcclusionBoxPlacement() {
+        isOcclusionBoxPlacementMode = false
+    }
+
+    func clearOcclusionBoxes() {
+        requestedOcclusionBoxCount = 0
+        isOcclusionBoxPlacementMode = false
+    }
+
+    /// 手のひらを自分へ向けるジェスチャーで、メニューを現在の視界前方に出す。
+    func requestMenuPresentation() {
+        isMenuVisible = true
+        menuPresentationRequest += 1
+    }
+
+    /// 4点キャリブレーションで得た棚座標系の向き。生成するボックスを棚と平行にする。
+    var calibrationOrientation: simd_quatf {
+        // simd_quatf には SDK によって `.identity` が定義されないため、
+        // 明示的なゼロ回転を使う。
+        guard isCalibrated else {
+            return simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
+        }
+        let matrix = laboratoryToARTransform
+        let rotation = simd_float3x3(columns: (
+            SIMD3<Float>(matrix.columns.0.x, matrix.columns.0.y, matrix.columns.0.z),
+            SIMD3<Float>(matrix.columns.1.x, matrix.columns.1.y, matrix.columns.1.z),
+            SIMD3<Float>(matrix.columns.2.x, matrix.columns.2.y, matrix.columns.2.z)
+        ))
+        return simd_quatf(rotation)
     }
 
     func scale(for modelID: String) -> SIMD3<Float> {
@@ -205,7 +275,11 @@ class GameManager {
     
     // アハ体験のゆっくりとした変化をスタート
     func startTransition() {
-        Task {
+        transitionTask?.cancel()
+        transitionProgress = 0
+        isMenuVisible = false
+        transitionTask = Task { [weak self] in
+            guard let self else { return }
             let duration: TimeInterval = 20.0
             let fps = 30
             let steps = Int(duration * Double(fps))
@@ -213,14 +287,27 @@ class GameManager {
             let interval = duration / Double(steps)
             
             try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
             
             for _ in 0..<steps {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    self.transitionProgress += stepValue
+                    self.transitionProgress = min(self.transitionProgress + stepValue, 1)
                 }
             }
         }
+    }
+
+    /// 次の問題へ移る前に、進行中の変化を止めて全モデルを変化前へ戻す。
+    func playAgain() {
+        transitionTask?.cancel()
+        transitionTask = nil
+        isPositionLocked = false
+        hasFoundObject = false
+        transitionProgress = 0
+        pickRandomTarget()
+        requestMenuPresentation()
     }
     /*
     // 🌍 アンカーID(位置と角度)の保存・読み込み
@@ -277,16 +364,6 @@ class GameManager {
         return scale
     }
     
-    // GameManager.swift の一番下など（クラスの波括弧 } の直前）に以下を追加します
-
-        // 🌟 追加: ゲームの状態をリセットして最初から遊べるようにする
-        func resetGameState() {
-            isPositionLocked = false
-            hasFoundObject = false
-            transitionProgress = 0.0
-            pickRandomTarget() // 新しい正解をランダムに選び直す
-        }
-
     private func storedFloatValues(forKey key: String, count: Int) -> [Float]? {
         guard let values = UserDefaults.standard.array(forKey: key), values.count == count else { return nil }
         let floatValues = values.compactMap { ($0 as? NSNumber)?.floatValue }
@@ -297,37 +374,47 @@ class GameManager {
         "\(Self.placementStoragePrefix)\(valueType)_\(id)"
     }
 
-    /// `to = transform * from` を満たす4点アフィン変換を作る。
-    private func makeAffineTransform(
+    /// 4点から回転と並進だけの変換を作る。手指で取得した基準点に少し誤差があっても、
+    /// オブジェクトに不自然な拡大縮小やせん断が掛からず、実空間に対して安定する。
+    private func makeRigidTransform(
         from source: [SIMD3<Float>],
         to destination: [SIMD3<Float>]
     ) -> simd_float4x4? {
         guard source.count == 4, destination.count == 4 else { return nil }
 
-        let sourceMatrix = matrixFromRows(source.map { SIMD4($0.x, $0.y, $0.z, 1) })
-        let determinant = simd_determinant(sourceMatrix)
-        guard abs(determinant) > 0.000_001 else { return nil }
+        guard let sourceBasis = orthonormalBasis(from: source),
+              let destinationBasis = orthonormalBasis(from: destination) else { return nil }
 
-        let destinationMatrix = matrixFromRows(destination.map { SIMD4($0.x, $0.y, $0.z, 1) })
-        let rowTransform = simd_inverse(sourceMatrix) * destinationMatrix
+        let rotation = destinationBasis * sourceBasis.transpose
+        let translation = destination[0] - rotation * source[0]
 
-        // 行ベクトル形式で解いた変換を、RealityKit の列ベクトル形式に転置する。
-        return simd_float4x4(
-            columns: (
-                SIMD4(rowTransform.columns.0.x, rowTransform.columns.1.x, rowTransform.columns.2.x, rowTransform.columns.3.x),
-                SIMD4(rowTransform.columns.0.y, rowTransform.columns.1.y, rowTransform.columns.2.y, rowTransform.columns.3.y),
-                SIMD4(rowTransform.columns.0.z, rowTransform.columns.1.z, rowTransform.columns.2.z, rowTransform.columns.3.z),
-                SIMD4(rowTransform.columns.0.w, rowTransform.columns.1.w, rowTransform.columns.2.w, rowTransform.columns.3.w)
-            )
-        )
+        return simd_float4x4(columns: (
+            SIMD4(rotation.columns.0, 0),
+            SIMD4(rotation.columns.1, 0),
+            SIMD4(rotation.columns.2, 0),
+            SIMD4(translation, 1)
+        ))
     }
 
-    private func matrixFromRows(_ rows: [SIMD4<Float>]) -> simd_float4x4 {
-        simd_float4x4(columns: (
-            SIMD4(rows[0].x, rows[1].x, rows[2].x, rows[3].x),
-            SIMD4(rows[0].y, rows[1].y, rows[2].y, rows[3].y),
-            SIMD4(rows[0].z, rows[1].z, rows[2].z, rows[3].z),
-            SIMD4(rows[0].w, rows[1].w, rows[2].w, rows[3].w)
-        ))
+    /// 基準点1を原点、2をY方向、3をZ方向、4をX方向の符号確認に利用する。
+    private func orthonormalBasis(from points: [SIMD3<Float>]) -> simd_float3x3? {
+        let origin = points[0]
+        let yRaw = points[1] - origin
+        let zRaw = points[2] - origin
+        guard length(yRaw) > 0.001, length(zRaw) > 0.001 else { return nil }
+
+        let yAxis = normalize(yRaw)
+        let zOrthogonal = zRaw - yAxis * dot(zRaw, yAxis)
+        guard length(zOrthogonal) > 0.001 else { return nil }
+        var zAxis = normalize(zOrthogonal)
+        var xAxis = normalize(cross(yAxis, zAxis))
+
+        // 基準点4が正のX側に来るように符号をそろえる。
+        if dot(points[3] - origin, xAxis) < 0 {
+            xAxis = -xAxis
+            zAxis = -zAxis
+        }
+
+        return simd_float3x3(columns: (xAxis, yAxis, zAxis))
     }
 }
