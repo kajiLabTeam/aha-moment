@@ -47,7 +47,7 @@ class GameManager {
     ]
     private let defaultYRotationDegrees: Float = 180        // 今後モデルが増えたら、ここの配列に追加するだけでOK
     let modelDefinitions: [AhaModelDef] = [
-        AhaModelDef(id: "obj1", original: "model3.usdz", altered: "model3_sized_red.usdz"),
+        AhaModelDef(id: "obj1", original: "model3.usdz", altered: "model3_alt.usdz"),
         AhaModelDef(id: "obj2", original: "model_tape.usdz", altered: "model_tape_alt.usdz"),
         AhaModelDef(id: "obj3", original: "model_fab.usdz", altered: "model_fab.usdz"),
         AhaModelDef(id: "obj4", original: "model_bottole.usdz", altered: "model_bottole.usdz"),
@@ -60,6 +60,8 @@ class GameManager {
     var isMenuVisible = true
     private(set) var menuPresentationRequest = 0
     private var transitionTask: Task<Void, Never>?
+    private var appliedMultiplayerRoundID: UUID?
+    private var appliedMultiplayerPhase: AhaRoundPhase?
 
     private(set) var calibrationPoints: [SIMD3<Float>] = []
     private(set) var isCalibrated = false
@@ -68,6 +70,13 @@ class GameManager {
     private(set) var requestedOcclusionBoxCount = 0
     private var laboratoryToARTransform = matrix_identity_float4x4
     private var positionAdjustments: [String: SIMD3<Float>] = [:]
+
+    /// 参加端末がホストから受け取った、すでに自端末座標系へ変換済みの最終配置。
+    /// これがある間は参加端末自身の4点キャリブレーション結果より優先する。
+    private(set) var sharedObjectTransforms: [String: simd_float4x4] = [:]
+    private(set) var sharedOcclusionBoxTransforms: [UUID: simd_float4x4] = [:]
+
+    var hasSharedPlacement: Bool { !sharedObjectTransforms.isEmpty }
     private var stableFingerPosition: SIMD3<Float>?
     private var stableFingerSince: Date?
     private var stableFingerPositionSum = SIMD3<Float>(repeating: 0)
@@ -110,6 +119,8 @@ class GameManager {
         requestedOcclusionBoxCount = 0
         laboratoryToARTransform = matrix_identity_float4x4
         positionAdjustments.removeAll()
+        sharedObjectTransforms.removeAll()
+        sharedOcclusionBoxTransforms.removeAll()
         isPositionLocked = false
         hasFoundObject = false
         transitionProgress = 0
@@ -117,6 +128,8 @@ class GameManager {
         menuPresentationRequest += 1
         transitionTask?.cancel()
         transitionTask = nil
+        appliedMultiplayerRoundID = nil
+        appliedMultiplayerPhase = nil
         lastCapturedFingerPosition = nil
         isWaitingForFingerToMove = false
         resetCalibrationFingerTracking()
@@ -215,6 +228,25 @@ class GameManager {
         positionAdjustments.removeAll()
     }
 
+    func applySharedPlacement(_ snapshot: AhaPlacementSnapshot) {
+        sharedObjectTransforms = Dictionary(
+            uniqueKeysWithValues: snapshot.objects.map { ($0.objectID, $0.matrix.simdMatrix) }
+        )
+        sharedOcclusionBoxTransforms = Dictionary(
+            uniqueKeysWithValues: snapshot.occlusionBoxes.map { ($0.id, $0.matrix.simdMatrix) }
+        )
+        // 参加端末ではローカル基準点取得を求めず、共有済み配置を表示する。
+        isCalibrated = !sharedObjectTransforms.isEmpty
+        isAdjustmentMode = false
+        isOcclusionBoxPlacementMode = false
+        requestedOcclusionBoxCount = 0
+        print("🌐 ホストの配置を受信: objects=\(sharedObjectTransforms.count), boxes=\(sharedOcclusionBoxTransforms.count)")
+    }
+
+    func sharedTransform(for modelID: String) -> simd_float4x4? {
+        sharedObjectTransforms[modelID]
+    }
+
     func requestOcclusionBox() {
         isAdjustmentMode = false
         isOcclusionBoxPlacementMode = true
@@ -270,6 +302,46 @@ class GameManager {
         if let randomModel = modelDefinitions.randomElement() {
             targetId = randomModel.id
             print("今回の正解オブジェクト: \(targetId)")
+        }
+    }
+
+    /// ホストが次の問題を決めるときに使う。微調整値は保持したまま変化前へ戻す。
+    func prepareMultiplayerRound() -> String {
+        transitionTask?.cancel()
+        transitionTask = nil
+        transitionProgress = 0
+        isPositionLocked = false
+        hasFoundObject = false
+        pickRandomTarget()
+        return targetId
+    }
+
+    /// ホストから配信された状態を適用する。重複配信ではアニメーションを再開始しない。
+    func applyMultiplayerSnapshot(_ snapshot: AhaRoundSnapshot) {
+        guard appliedMultiplayerRoundID != snapshot.roundID || appliedMultiplayerPhase != snapshot.phase else {
+            return
+        }
+        appliedMultiplayerRoundID = snapshot.roundID
+        appliedMultiplayerPhase = snapshot.phase
+        transitionTask?.cancel()
+        transitionTask = nil
+        targetId = snapshot.targetID
+
+        switch snapshot.phase {
+        case .setup:
+            transitionProgress = 0
+            isPositionLocked = false
+            hasFoundObject = false
+        case .running:
+            transitionProgress = 0
+            hasFoundObject = false
+            isPositionLocked = true
+            startTransition()
+        case .completed:
+            transitionProgress = 1
+            isPositionLocked = true
+            hasFoundObject = true
+            requestMenuPresentation()
         }
     }
     

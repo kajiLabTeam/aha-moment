@@ -10,6 +10,7 @@ private final class DirectOcclusionBoxStore {
     let rootEntity = Entity()
     var boxes: [Entity] = []
     var guideEntities: [Entity] = []
+    var identifiers: [UInt64: UUID] = [:]
 }
 
 private final class MenuEntityStore {
@@ -23,6 +24,7 @@ private final class HandGestureStore {
 
 struct ImmersiveView: View {
     @Environment(GameManager.self) var gameManager
+    @Environment(AppModel.self) private var appModel
     
     @State private var dragOffsets: [UInt64: SIMD3<Float>] = [:]
     @State private var initialScales: [UInt64: SIMD3<Float>] = [:]
@@ -42,6 +44,7 @@ struct ImmersiveView: View {
     @State private var menuEntityStore = MenuEntityStore()
     @State private var handGestureStore = HandGestureStore()
     @State private var feedbackTargetPosition: SIMD3<Float>?
+    @State private var hasPublishedInitialPlacement = false
     
     var body: some View {
         RealityView { content, attachments in
@@ -80,6 +83,13 @@ struct ImmersiveView: View {
         } update: { content, attachments in
             applyCalibratedObjectPositions()
             syncDirectOcclusionBoxes()
+            if gameManager.isCalibrated,
+               appModel.multiplayerGame.canEditPlacement,
+               loadedPairs.count == gameManager.modelDefinitions.count,
+               !hasPublishedInitialPlacement {
+                publishCurrentPlacement()
+                hasPublishedInitialPlacement = true
+            }
             updateMenuPresentation()
             // 毎フレーム全ペアを更新する。次の問題では前回の正解モデルも必ず変化前へ戻る。
             for (modelID, pair) in loadedPairs {
@@ -99,6 +109,15 @@ struct ImmersiveView: View {
                             Button("最初から取り直す") {
                                 gameManager.restartCalibration()
                             }
+                        }
+                        .padding()
+                        .glassBackgroundEffect()
+                    } else if !appModel.multiplayerGame.canEditPlacement {
+                        VStack(spacing: 10) {
+                            Text("ホストの確定配置を表示中です")
+                            Text("微調整とオクルージョンボックスの配置はホスト端末で行います")
+                                .font(.caption)
+                                .multilineTextAlignment(.center)
                         }
                         .padding()
                         .glassBackgroundEffect()
@@ -137,8 +156,8 @@ struct ImmersiveView: View {
                             }
 
                             Button(action: {
-                                gameManager.isPositionLocked = true
-                                gameManager.startTransition()
+                                publishCurrentPlacement()
+                                appModel.multiplayerGame.requestStartRound()
                             }) {
                                 Text("配置を確定してスタート")
                                     .font(.title)
@@ -159,7 +178,7 @@ struct ImmersiveView: View {
                             
                             Button(action: {
                                 feedbackTargetPosition = nil
-                                gameManager.playAgain()
+                                appModel.multiplayerGame.requestReplay()
                             }) {
                                 Text("もう一度遊ぶ（配置をやり直す）")
                                     .font(.title2)
@@ -178,7 +197,9 @@ struct ImmersiveView: View {
             DragGesture(minimumDistance: 10)
                 .targetedToAnyEntity()
                 .onChanged { value in
-                    guard gameManager.isCalibrated, !gameManager.isPositionLocked else { return }
+                    guard gameManager.isCalibrated,
+                          appModel.multiplayerGame.canEditPlacement,
+                          !gameManager.isPositionLocked else { return }
 
                     // オクルージョンボックスは配置モード中だけ、仮想物体と同じ操作で直接動かせる。
                     if gameManager.isOcclusionBoxPlacementMode,
@@ -195,6 +216,7 @@ struct ImmersiveView: View {
                 .onEnded { value in
                     if let boxRoot = findOcclusionBoxRoot(for: value.entity) {
                         dragOffsets.removeValue(forKey: boxRoot.id)
+                        publishCurrentPlacement()
                         return
                     }
                     if let targetRoot = findRootEntity(for: value.entity),
@@ -205,6 +227,7 @@ struct ImmersiveView: View {
                             targetRoot.position(relativeTo: nil),
                             for: modelID
                         )
+                        publishCurrentPlacement()
                     }
                 }
         )
@@ -380,7 +403,12 @@ struct ImmersiveView: View {
                             if gameManager.isPositionLocked && !gameManager.hasFoundObject {
                                 if pointedObjectID == gameManager.targetId {
                                     print("👉 正解！変化したオブジェクト(\(gameManager.targetId))を見つけました！")
-                                    presentCorrectAnswer()
+                                    appModel.multiplayerGame.submitAnswer(modelID: gameManager.targetId)
+                                    // ホスト端末では同期処理が即時反映されるため、個人用の
+                                    // 「目の前へ移動」演出もここで開始する。
+                                    if gameManager.hasFoundObject {
+                                        presentCorrectAnswer()
+                                    }
                                 }
                             }
                         }
@@ -394,7 +422,9 @@ struct ImmersiveView: View {
         .realityViewLayoutBehavior(.fixedSize)
         .volumeBaseplateVisibility(.hidden)
         .onAppear {
+            appModel.multiplayerGame.attach(gameManager: gameManager, rpcModel: appModel.rpcModel)
             gameManager.restartCalibration()
+            hasPublishedInitialPlacement = false
         }
         .onDisappear {
             latestIndexTipPosition = nil
@@ -447,10 +477,41 @@ struct ImmersiveView: View {
     /// 要求数に合わせて、ユーザーが直接ドラッグする40 cmの正面開口ボックスを同期する。
     /// Storeは参照型のため、RealityViewの更新中に@Stateを書き換えずに済む。
     private func syncDirectOcclusionBoxes() {
+        // 参加端末では、ホストから座標変換済みで届いたボックスだけを再現する。
+        if gameManager.hasSharedPlacement {
+            let remoteBoxes = gameManager.sharedOcclusionBoxTransforms
+            let remoteIDs = Set(remoteBoxes.keys)
+
+            for box in directOcclusionBoxStore.boxes.reversed() where
+                !remoteIDs.contains(directOcclusionBoxStore.identifiers[box.id] ?? UUID()) {
+                directOcclusionBoxStore.identifiers.removeValue(forKey: box.id)
+                box.removeFromParent()
+                directOcclusionBoxStore.boxes.removeAll { $0 == box }
+            }
+
+            for (id, matrix) in remoteBoxes {
+                if let box = directOcclusionBoxStore.boxes.first(where: {
+                    directOcclusionBoxStore.identifiers[$0.id] == id
+                }) {
+                    box.setTransformMatrix(matrix, relativeTo: nil)
+                } else {
+                    let (box, guide) = makeDirectOcclusionBox(at: .zero)
+                    box.setTransformMatrix(matrix, relativeTo: nil)
+                    guide.isEnabled = false
+                    directOcclusionBoxStore.rootEntity.addChild(box)
+                    directOcclusionBoxStore.boxes.append(box)
+                    directOcclusionBoxStore.guideEntities.append(guide)
+                    directOcclusionBoxStore.identifiers[box.id] = id
+                }
+            }
+            return
+        }
+
         let requestedCount = gameManager.requestedOcclusionBoxCount
 
         while directOcclusionBoxStore.boxes.count > requestedCount {
             let box = directOcclusionBoxStore.boxes.removeLast()
+            directOcclusionBoxStore.identifiers.removeValue(forKey: box.id)
             box.removeFromParent()
             _ = directOcclusionBoxStore.guideEntities.popLast()
         }
@@ -464,6 +525,7 @@ struct ImmersiveView: View {
             directOcclusionBoxStore.rootEntity.addChild(box)
             directOcclusionBoxStore.boxes.append(box)
             directOcclusionBoxStore.guideEntities.append(guide)
+            directOcclusionBoxStore.identifiers[box.id] = UUID()
         }
 
         let showGuide = gameManager.isOcclusionBoxPlacementMode
@@ -534,6 +596,16 @@ struct ImmersiveView: View {
 
     private func applyCalibratedObjectPositions() {
         for (modelID, pair) in loadedPairs {
+            if let sharedTransform = gameManager.sharedTransform(for: modelID) {
+                pair.rootEntity.setTransformMatrix(sharedTransform, relativeTo: nil)
+                if gameManager.hasFoundObject,
+                   modelID == gameManager.targetId,
+                   let feedbackTargetPosition {
+                    pair.rootEntity.setPosition(feedbackTargetPosition, relativeTo: nil)
+                }
+                pair.rootEntity.isEnabled = true
+                continue
+            }
             guard let position = gameManager.calibratedPosition(for: modelID) else {
                 pair.rootEntity.isEnabled = false
                 continue
@@ -549,6 +621,28 @@ struct ImmersiveView: View {
             pair.rootEntity.orientation = gameManager.orientation(for: modelID)
             pair.rootEntity.isEnabled = true
         }
+    }
+
+    /// 現在表示しているAさんの最終ワールド変換を、送信前の正本として保存する。
+    /// RPC Kit がBさんへの送信時にA→Bのアフィン行列を掛ける。
+    private func publishCurrentPlacement() {
+        guard appModel.multiplayerGame.canEditPlacement else { return }
+        let objects = loadedPairs.map { modelID, pair in
+            AhaObjectPlacement(
+                objectID: modelID,
+                matrix: pair.rootEntity.transformMatrix(relativeTo: nil)
+            )
+        }
+        let boxes = directOcclusionBoxStore.boxes.compactMap { box -> AhaOcclusionBoxPlacement? in
+            guard let id = directOcclusionBoxStore.identifiers[box.id] else { return nil }
+            return AhaOcclusionBoxPlacement(
+                id: id,
+                matrix: box.transformMatrix(relativeTo: nil)
+            )
+        }
+        appModel.multiplayerGame.updateAuthoritativePlacement(
+            .init(objects: objects, occlusionBoxes: boxes)
+        )
     }
 
     /// 手のひらジェスチャーで要求されたときだけ、UIを視界前方へ表示する。

@@ -26,6 +26,7 @@ class AppModel {
     
     // RPC モデル
     let rpcModel: RPCModel
+    let multiplayerGame = MultiplayerGameSession()
     init() {
         peerManager = PeerManager(
             sendExchangeDataWrapper: sendWrapper,
@@ -38,10 +39,16 @@ class AppModel {
             receiveExchangeDataWrapper: receiveWrapper,
             mcPeerIDUUIDWrapper: peerWrapper,
             entities: [
-                RPCEntityRegistration<CoordinateTransformEntity>(handler: coordinateTransforms)
+                RPCEntityRegistration<CoordinateTransformEntity>(handler: coordinateTransforms),
+                RPCEntityRegistration<AhaGameEntity>(handler: multiplayerGame)
                 
             ]
         )
+        rpcModel.affineMatrixProvider = { [weak coordinateTransforms] peerID in
+            coordinateTransforms?.affineMatrixs[peerID]
+        }
+        multiplayerGame.attach(coordinateTransforms: coordinateTransforms)
+        peerManager.start()
     }
     let immersiveSpaceID = "ImmersiveSpace"
     enum ImmersiveSpaceState {
