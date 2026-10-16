@@ -370,14 +370,13 @@ struct ImmersiveView: View {
                             }
                         }
                         
-                        let isPointingNow = (pointedObjectID != nil)
                         laserEntity.isEnabled = true
                         laserEntity.position = tipPos
                         laserEntity.look(at: tipPos + (visualDirection * 10.0), from: tipPos, relativeTo: nil)
                         
                         if let laserModel = laserEntity.findEntity(named: "LaserBeam") as? ModelEntity {
-                            let color: UIColor = isPointingNow ? .green : .red.withAlphaComponent(0.5)
-                            laserModel.model?.materials = [UnlitMaterial(color: color)]
+                            // ヒットの有無は見た目に出さず、ゲーム中の手掛かりにしない。
+                            laserModel.model?.materials = [UnlitMaterial(color: .red.withAlphaComponent(0.5))]
                         }
                         
                         let isHoldingCorrectTarget = gameManager.isPositionLocked
