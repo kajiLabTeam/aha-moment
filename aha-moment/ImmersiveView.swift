@@ -327,9 +327,13 @@ struct ImmersiveView: View {
                         handGestureStore.wasPalmFacingPlayer = palmFacesPlayer
                     }
 
-                    // キャリブレーション中はレーザーを使わず、静止した指先だけを記録する。
-                    guard gameManager.isCalibrated else {
-                        await MainActor.run { laserEntity.isEnabled = false }
+                    // 配置確定前はレーザーを表示・判定しない。
+                    // キャリブレーション中は静止した指先だけを記録する。
+                    guard gameManager.isCalibrated, gameManager.isPositionLocked else {
+                        await MainActor.run {
+                            laserEntity.isEnabled = false
+                            correctTargetHitStartedAt = nil
+                        }
                         continue
                     }
 
