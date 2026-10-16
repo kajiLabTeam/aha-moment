@@ -263,7 +263,6 @@ struct ImmersiveView: View {
                     print("⚠️ worldSensingが未許可のため、位置安定化なしで動作します")
                 }
                 
-                var wasPointing = false
                 for await update in handTracking.anchorUpdates {
                     let anchor = update.anchor
                     guard anchor.isTracked, anchor.chirality == .right else {
@@ -340,7 +339,6 @@ struct ImmersiveView: View {
                         await MainActor.run {
                             if lostFrameCount > lostFrameThreshold {
                                 laserEntity.isEnabled = false
-                                wasPointing = false
                                 correctTargetHitStartedAt = nil
                             }
                         }
@@ -404,7 +402,6 @@ struct ImmersiveView: View {
                             }
                             correctTargetHitStartedAt = nil
                         }
-                        wasPointing = isPointingNow
                     }
                 }
             } catch {
