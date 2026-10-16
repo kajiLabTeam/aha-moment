@@ -357,7 +357,7 @@ struct ImmersiveView: View {
                     var pointedObjectID: String? = nil
                     
                     await MainActor.run {
-                        let radius: Float = 0.3
+                        let radius: Float = 0.15
                         for (id, pair) in loadedPairs {
                             let objectPos = pair.rootEntity.position(relativeTo: nil)
                             let L = objectPos - tipPos
