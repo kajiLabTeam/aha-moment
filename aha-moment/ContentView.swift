@@ -37,7 +37,7 @@ struct ContentView: View {
 
             Text("2人で座標を合わせる")
                 .font(.title2)
-            Text("両端末で以下の Immersive RPC Kit の案内に従い、同じ相手を選択して指合わせを行ってください。")
+            Text("両端末で以下の Immersive RPC Kit の案内に従い、同じ相手を選択して指合わせを行ってください。変換完了後は、両端末で「設定を完了しました」を押してアプリ操作へ戻ります。")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             // Immersive RPC Kit が提供する標準の座標共有 UI。
@@ -50,9 +50,13 @@ struct ContentView: View {
         .onAppear {
             appModel.multiplayerGame.attach(gameManager: gameManager, rpcModel: appModel.rpcModel)
         }
-        .onChange(of: appModel.coordinateTransforms.session.state == .prepared) { _, isPrepared in
-            guard isPrepared else { return }
-            appModel.multiplayerGame.coordinateSharingDidPrepare()
+        // PreparationState は Equatable ではないため、表示名を使って全段階を監視する。
+        // これにより、座標共有がどの画面・段階で止まったかをログで追跡できる。
+        .onChange(of: String(describing: appModel.coordinateTransforms.session.state)) { oldState, newState in
+            appModel.multiplayerGame.coordinateSharingStateDidChange(
+                from: oldState,
+                to: newState
+            )
         }
     }
 }

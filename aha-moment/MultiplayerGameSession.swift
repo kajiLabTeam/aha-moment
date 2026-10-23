@@ -106,13 +106,18 @@ final class MultiplayerGameSession {
     func attach(gameManager: GameManager, rpcModel: RPCModel) {
         self.gameManager = gameManager
         self.rpcModel = rpcModel
+        print("🧭 [座標共有][初期化] ゲーム同期を接続しました: localPeer=\(rpcModel.mcPeerIDUUIDWrapper.mine.hash)")
     }
 
     /// 実物へ最初に重ね合わせる人が、配置とゲーム進行の決定権を持つ。
     /// 通信上のホストは必要だが、利用者にホスト選択を要求しない。
     func beginPlacement() {
-        guard hostPeerID == nil, let gameManager, let rpcModel else { return }
+        guard hostPeerID == nil, let gameManager, let rpcModel else {
+            print("🧭 [配置同期][開始不可] すでに配置担当がいる、またはゲーム同期の初期化前です")
+            return
+        }
         let placementOwnerID = rpcModel.mcPeerIDUUIDWrapper.mine.hash
+        print("🧭 [配置同期][配置担当を決定] peer=\(placementOwnerID), 接続中Peer=\(rpcModel.mcPeerIDUUIDWrapper.standby.map(\.hash))")
         // 配置開始は正解選択ではない。ゲームを開始する瞬間に改めてランダム選択する。
         publish(AhaRoundSnapshot(
             hostPeerID: placementOwnerID,
@@ -207,12 +212,30 @@ final class MultiplayerGameSession {
     /// Immersive RPC Kit 標準 UI が座標変換行列を保存した後に呼ぶ。
     /// 配置した端末は確定配置を送信し、もう一方は自動的に受信を要求する。
     func coordinateSharingDidPrepare() {
-        guard gameCoordinateTransforms?.session.state == .prepared else { return }
+        guard let coordinateTransforms = gameCoordinateTransforms,
+              coordinateTransforms.session.state == .prepared
+        else {
+            print("🧭 [座標共有][準備完了を無視] state=prepared ではありません")
+            return
+        }
+
+        let peerID = coordinateTransforms.session.otherPeerId
+        guard coordinateTransforms.session.isOtherPeerInitialized,
+              peerID != 0,
+              let affineMatrix = coordinateTransforms.affineMatrixs[peerID]
+        else {
+            print("🧭 [座標共有][失敗] 準備完了になりましたが、相手Peerまたは変換行列を取得できません。otherPeer=\(peerID), matrixKeys=\(coordinateTransforms.affineMatrixs.keys.sorted())")
+            return
+        }
+
+        print("🧭 [座標共有][変換完成] otherPeer=\(peerID), affineMatrix=\(affineMatrix)")
         if isHosting {
+            print("🧭 [配置同期][送信開始] 配置担当端末が変換済み配置を全端末へ送ります")
             sendAuthoritativePlacement(to: .all)
             return
         }
 
+        print("🧭 [配置同期][受信要求] 配置担当端末のスナップショットを要求します")
         // 両端末の「設定を完了する」を押す時刻には差があるため、短時間だけ再試行する。
         joinExistingHost()
         Task { @MainActor [weak self] in
@@ -220,6 +243,24 @@ final class MultiplayerGameSession {
             self?.joinExistingHost()
             try? await Task.sleep(for: .milliseconds(800))
             self?.joinExistingHost()
+        }
+    }
+
+    /// Kit の「設定を完了しました」で session.state が initial に戻ったことを記録する。
+    /// resetPeer() は affineMatrixs を保持するため、以後も保存済み変換行列で配置同期できる。
+    func coordinateSharingPreparationDidClose() {
+        let matrixPeerIDs = gameCoordinateTransforms?.affineMatrixs.keys.sorted() ?? []
+        print("🧭 [座標共有][UIを閉じた] 標準UIは initial に戻りました。保持済み変換行列のPeer=\(matrixPeerIDs)")
+    }
+
+    /// 標準UIの段階遷移をそのまま出力し、指合わせで止まった場所を特定できるようにする。
+    func coordinateSharingStateDidChange(from oldState: String, to newState: String) {
+        print("🧭 [座標共有][UI状態] \(oldState) → \(newState)")
+        if oldState == "prepared" && newState == "initial" {
+            coordinateSharingPreparationDidClose()
+        }
+        if newState == "prepared" {
+            coordinateSharingDidPrepare()
         }
     }
 
@@ -245,21 +286,52 @@ final class MultiplayerGameSession {
         // Aさんが単独で配置した後、ゲームホストを選ぶケースに備え、
         // 接続前でもこの端末の候補配置を保持しておく。
         authoritativePlacement = placement
-        guard isHosting else { return }
-        guard gameCoordinateTransforms?.session.state == .prepared else { return }
+        print("🧭 [配置同期][正本を保存] objects=\(placement.objects.coordinateLog), boxes=\(placement.occlusionBoxes.count), isPlacementOwner=\(isHosting)")
+        guard isHosting else {
+            print("🧭 [配置同期][送信待機] この端末は配置担当ではありません")
+            return
+        }
+        guard hasUsableCoordinateTransform else {
+            print("🧭 [配置同期][送信待機] 座標変換行列がまだ完成していません")
+            return
+        }
         sendAuthoritativePlacement(to: .all)
     }
 
     private func sendAuthoritativePlacement(to target: RPCUnicastMultiTarget) {
-        guard isHosting, let rpcModel, let authoritativePlacement,
-              gameCoordinateTransforms?.session.state == .prepared
-        else { return }
+        guard isHosting else {
+            print("🧭 [配置同期][送信中止] この端末は配置担当ではありません")
+            return
+        }
+        guard let rpcModel else {
+            print("🧭 [配置同期][送信中止] RPCモデルがありません")
+            return
+        }
+        guard let authoritativePlacement else {
+            print("🧭 [配置同期][送信中止] 送信する確定配置がまだありません")
+            return
+        }
+        guard hasUsableCoordinateTransform else {
+            print("🧭 [配置同期][送信中止] 変換行列が未完成、または接続相手の行列がありません")
+            return
+        }
 
-        _ = rpcModel.run(
+        let peers = rpcModel.mcPeerIDUUIDWrapper.standby.map(\.hash)
+        print("🧭 [配置同期][送信] target=\(String(describing: target)), peers=\(peers), objects=\(authoritativePlacement.objects.coordinateLog), boxes=\(authoritativePlacement.occlusionBoxes.count)")
+        let results = rpcModel.run(
             transforming: target,
             AhaGameEntity.self,
             .applyPlacement(authoritativePlacement)
         )
+        print("🧭 [配置同期][送信結果] \(results)")
+    }
+
+    /// 変換UIを閉じた後も affineMatrixs は残る。状態ではなく、接続中Peer向けの行列の有無を判定する。
+    private var hasUsableCoordinateTransform: Bool {
+        guard let rpcModel, let coordinateTransforms = gameCoordinateTransforms else { return false }
+        let connectedPeerIDs = rpcModel.mcPeerIDUUIDWrapper.standby.map(\.hash)
+        return !connectedPeerIDs.isEmpty
+            && connectedPeerIDs.allSatisfy { coordinateTransforms.affineMatrixs[$0] != nil }
     }
 
     /// この端末をゲーム進行のホストにする。複数端末で同時に押さず、1台だけで実行する。
@@ -277,7 +349,11 @@ final class MultiplayerGameSession {
 
     /// 既存ホストへ現在のスナップショットを要求する。
     func joinExistingHost() {
-        guard let rpcModel else { return }
+        guard let rpcModel else {
+            print("🧭 [配置同期][受信要求中止] RPCモデルがありません")
+            return
+        }
+        print("🧭 [配置同期][スナップショット要求] localPeer=\(rpcModel.mcPeerIDUUIDWrapper.mine.hash), 接続中Peer=\(rpcModel.mcPeerIDUUIDWrapper.standby.map(\.hash))")
         let request = AhaGameEntity.request(
             .requestSnapshot(AhaPeerRequest(peerID: rpcModel.mcPeerIDUUIDWrapper.mine.hash)),
             to: 0
@@ -367,6 +443,8 @@ final class MultiplayerGameSession {
     private func publish(_ snapshot: AhaRoundSnapshot) {
         guard let rpcModel else { return }
 
+        print("🧭 [ゲーム同期][状態配信] phase=\(snapshot.phase.rawValue), target=\(snapshot.targetID), coordinator=\(snapshot.hostPeerID), peers=\(rpcModel.mcPeerIDUUIDWrapper.standby.map(\.hash))")
+
         // 接続相手がまだいない状態で MCSession.send(_:toPeers:) を呼ぶと
         // "Invalid peerIDs parameter" になる。先にローカルだけを確定し、
         // 後から接続した端末には joinExistingHost() の応答で配信する。
@@ -379,11 +457,16 @@ final class MultiplayerGameSession {
         hostPeerID = snapshot.hostPeerID
         latestSnapshot = snapshot
         gameManager?.applyMultiplayerSnapshot(snapshot)
+        print("🧭 [ゲーム同期][状態を適用] phase=\(snapshot.phase.rawValue), target=\(snapshot.targetID), coordinator=\(snapshot.hostPeerID), localIsCoordinator=\(isHosting)")
         return .success(())
     }
 
     fileprivate func respondToSnapshotRequest(_ request: AhaPeerRequest) -> RPCResult {
-        guard isHosting, let rpcModel, let latestSnapshot else { return .success(()) }
+        guard isHosting, let rpcModel, let latestSnapshot else {
+            print("🧭 [配置同期][要求を無視] 配置担当またはゲーム状態が未確定です")
+            return .success(())
+        }
+        print("🧭 [配置同期][要求を受信] requester=\(request.peerID)。ゲーム状態と確定配置を返します")
         let result = rpcModel.run(remoteOnly: AhaGameEntity.request(
             .deliverSnapshot(latestSnapshot),
             to: request.peerID
@@ -413,9 +496,23 @@ final class MultiplayerGameSession {
 
     fileprivate func applyPlacement(_ placement: AhaPlacementSnapshot) -> RPCResult {
         // transforming は送信元でもローカル実行される。ホストの正本は上書きしない。
-        guard !isHosting else { return .success(()) }
+        guard !isHosting else {
+            print("🧭 [配置同期][自端末への適用を省略] 配置担当の正本を維持します")
+            return .success(())
+        }
+        print("🧭 [配置同期][受信・適用] objects=\(placement.objects.coordinateLog), boxes=\(placement.occlusionBoxes.count)")
         gameManager?.applySharedPlacement(placement)
         return .success(())
+    }
+}
+
+private extension Array where Element == AhaObjectPlacement {
+    var coordinateLog: String {
+        map { placement in
+            let p = placement.matrix.simdMatrix.columns.3
+            return "\(placement.objectID)=(\(p.x), \(p.y), \(p.z))"
+        }
+        .joined(separator: ", ")
     }
 }
 
