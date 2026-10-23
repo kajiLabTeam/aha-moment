@@ -22,12 +22,6 @@ private final class HandGestureStore {
     var wasPalmFacingPlayer = false
 }
 
-/// RealityView の更新中に SwiftUI の State を変更しないための配置配信フラグ。
-private final class InitialPlacementPublishStore {
-    var hasPublished = false
-    var isQueued = false
-}
-
 @MainActor
 struct ImmersiveView: View {
     @Environment(GameManager.self) var gameManager
@@ -54,7 +48,6 @@ struct ImmersiveView: View {
     @State private var menuEntityStore = MenuEntityStore()
     @State private var handGestureStore = HandGestureStore()
     @State private var feedbackTargetPosition: SIMD3<Float>?
-    @State private var initialPlacementPublishStore = InitialPlacementPublishStore()
     
     var body: some View {
         RealityView { content, attachments in
@@ -93,21 +86,6 @@ struct ImmersiveView: View {
         } update: { content, attachments in
             applyCalibratedObjectPositions()
             syncDirectOcclusionBoxes()
-            if gameManager.isCalibrated,
-               appModel.multiplayerGame.canEditPlacement,
-               loadedPairs.count == gameManager.modelDefinitions.count,
-               !initialPlacementPublishStore.hasPublished,
-               !initialPlacementPublishStore.isQueued {
-                // RealityView の update 中に @State を直接変更すると警告になるため、
-                // MainActor の次の実行機会で配置配信とフラグ更新を行う。
-                initialPlacementPublishStore.isQueued = true
-                Task { @MainActor in
-                    await Task.yield()
-                    self.publishCurrentPlacement()
-                    self.initialPlacementPublishStore.hasPublished = true
-                    self.initialPlacementPublishStore.isQueued = false
-                }
-            }
             updateMenuPresentation()
             // 毎フレーム全ペアを更新する。次の問題では前回の正解モデルも必ず変化前へ戻る。
             for (modelID, pair) in loadedPairs {
@@ -452,8 +430,15 @@ struct ImmersiveView: View {
         .onAppear {
             appModel.multiplayerGame.attach(gameManager: gameManager, rpcModel: appModel.rpcModel)
             gameManager.restartCalibration()
-            initialPlacementPublishStore.hasPublished = false
-            initialPlacementPublishStore.isQueued = false
+        }
+        // RealityView.update 中ではなく、キャリブレーション完了後の SwiftUI の
+        // 状態遷移として最初の配置を保存する。
+        .onChange(of: gameManager.isCalibrated) { _, isCalibrated in
+            guard isCalibrated,
+                  appModel.multiplayerGame.canEditPlacement,
+                  loadedPairs.count == gameManager.modelDefinitions.count
+            else { return }
+            publishCurrentPlacement()
         }
         .onDisappear {
             latestIndexTipPosition = nil
