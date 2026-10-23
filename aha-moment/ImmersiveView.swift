@@ -87,12 +87,6 @@ struct ImmersiveView: View {
             applyCalibratedObjectPositions()
             syncDirectOcclusionBoxes()
             updateMenuPresentation()
-            // 毎フレーム全ペアを更新する。次の問題では前回の正解モデルも必ず変化前へ戻る。
-            for (modelID, pair) in loadedPairs {
-                pair.updateProgress(
-                    modelID == gameManager.targetId ? gameManager.transitionProgress : 0
-                )
-            }
         } attachments: {
             Attachment(id: "GameUI") {
                 ZStack {
@@ -440,6 +434,17 @@ struct ImmersiveView: View {
             else { return }
             publishCurrentPlacement()
         }
+        // 透明度の変更は RealityView.update の外で行う。
+        // これにより、SwiftUI のビュー更新中にコンポーネントを更新する警告を防ぐ。
+        .onChange(of: gameManager.transitionProgress) { _, _ in
+            applyModelProgress()
+        }
+        .onChange(of: gameManager.targetId) { _, _ in
+            applyModelProgress()
+        }
+        .onChange(of: loadedPairs.count) { _, _ in
+            applyModelProgress()
+        }
         .onDisappear {
             latestIndexTipPosition = nil
             feedbackTargetPosition = nil
@@ -635,6 +640,16 @@ struct ImmersiveView: View {
             pair.rootEntity.scale = gameManager.scale(for: modelID)
             pair.rootEntity.orientation = gameManager.orientation(for: modelID)
             pair.rootEntity.isEnabled = true
+        }
+    }
+
+    /// 正解モデルだけを変化後モデルへ徐々に切り替える。
+    /// SwiftUI の RealityView.update 中ではなく、観測値の変更後に実行する。
+    private func applyModelProgress() {
+        for (modelID, pair) in loadedPairs {
+            pair.updateProgress(
+                modelID == gameManager.targetId ? gameManager.transitionProgress : 0
+            )
         }
     }
 
