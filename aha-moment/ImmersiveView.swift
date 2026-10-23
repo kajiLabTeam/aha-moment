@@ -39,6 +39,9 @@ struct ImmersiveView: View {
     @State private var latestIndexTipPosition: SIMD3<Float>?
     @State private var lostFrameCount = 0                    // ← 追加
     private let lostFrameThreshold = 5 // 約0.1秒分(90Hz想定)  // ← 追加
+    /// 正解オブジェクトにレーザーが連続して当たり始めた時刻。
+    @State private var correctTargetHitStartedAt: Date?
+    private let correctTargetHoldDuration: TimeInterval = 2.0
     
     @State private var directOcclusionBoxStore = DirectOcclusionBoxStore()
     @State private var menuEntityStore = MenuEntityStore()
@@ -283,7 +286,6 @@ struct ImmersiveView: View {
                     print("⚠️ worldSensingが未許可のため、位置安定化なしで動作します")
                 }
                 
-                var wasPointing = false
                 for await update in handTracking.anchorUpdates {
                     let anchor = update.anchor
                     guard anchor.isTracked, anchor.chirality == .right else {
@@ -291,6 +293,7 @@ struct ImmersiveView: View {
                             laserEntity.isEnabled = false
                             gameManager.resetCalibrationFingerTracking()
                             handGestureStore.wasPalmFacingPlayer = false
+                            correctTargetHitStartedAt = nil
                         }
                         continue
                     }
@@ -303,6 +306,7 @@ struct ImmersiveView: View {
                             }
                             latestIndexTipPosition = nil
                             gameManager.resetCalibrationFingerTracking()
+                            correctTargetHitStartedAt = nil
                         }
                         continue
                     }
@@ -346,9 +350,13 @@ struct ImmersiveView: View {
                         handGestureStore.wasPalmFacingPlayer = palmFacesPlayer
                     }
 
-                    // キャリブレーション中はレーザーを使わず、静止した指先だけを記録する。
-                    guard gameManager.isCalibrated else {
-                        await MainActor.run { laserEntity.isEnabled = false }
+                    // 配置確定前はレーザーを表示・判定しない。
+                    // キャリブレーション中は静止した指先だけを記録する。
+                    guard gameManager.isCalibrated, gameManager.isPositionLocked else {
+                        await MainActor.run {
+                            laserEntity.isEnabled = false
+                            correctTargetHitStartedAt = nil
+                        }
                         continue
                     }
 
@@ -358,7 +366,7 @@ struct ImmersiveView: View {
                         await MainActor.run {
                             if lostFrameCount > lostFrameThreshold {
                                 laserEntity.isEnabled = false
-                                wasPointing = false
+                                correctTargetHitStartedAt = nil
                             }
                         }
                         continue
@@ -374,7 +382,7 @@ struct ImmersiveView: View {
                     var pointedObjectID: String? = nil
                     
                     await MainActor.run {
-                        let radius: Float = 0.3
+                        let radius: Float = 0.15
                         for (id, pair) in loadedPairs {
                             let objectPos = pair.rootEntity.position(relativeTo: nil)
                             let L = objectPos - tipPos
@@ -389,30 +397,35 @@ struct ImmersiveView: View {
                             }
                         }
                         
-                        let isPointingNow = (pointedObjectID != nil)
                         laserEntity.isEnabled = true
                         laserEntity.position = tipPos
                         laserEntity.look(at: tipPos + (visualDirection * 10.0), from: tipPos, relativeTo: nil)
                         
                         if let laserModel = laserEntity.findEntity(named: "LaserBeam") as? ModelEntity {
-                            let color: UIColor = isPointingNow ? .green : .red.withAlphaComponent(0.5)
-                            laserModel.model?.materials = [UnlitMaterial(color: color)]
+                            // ヒットの有無は見た目に出さず、ゲーム中の手掛かりにしない。
+                            laserModel.model?.materials = [UnlitMaterial(color: .red.withAlphaComponent(0.5))]
                         }
                         
-                        if isPointingNow && !wasPointing {
-                            if gameManager.isPositionLocked && !gameManager.hasFoundObject {
-                                if pointedObjectID == gameManager.targetId {
-                                    print("👉 正解！変化したオブジェクト(\(gameManager.targetId))を見つけました！")
-                                    appModel.multiplayerGame.submitAnswer(modelID: gameManager.targetId)
-                                    // ホスト端末では同期処理が即時反映されるため、個人用の
-                                    // 「目の前へ移動」演出もここで開始する。
-                                    if gameManager.hasFoundObject {
-                                        presentCorrectAnswer()
-                                    }
+                        let isHoldingCorrectTarget = !gameManager.hasFoundObject
+                            && pointedObjectID == gameManager.targetId
+
+                        if isHoldingCorrectTarget {
+                            if correctTargetHitStartedAt == nil {
+                                correctTargetHitStartedAt = .now
+                                print("⏱️ [Correct Hold Start] \(gameManager.targetId): 2秒間レーザーを当て続けてください")
+                            } else if let startedAt = correctTargetHitStartedAt,
+                                      Date.now.timeIntervalSince(startedAt) >= correctTargetHoldDuration {
+                                correctTargetHitStartedAt = nil
+                                print("👉 正解！変化したオブジェクト(\(gameManager.targetId))に2秒間レーザーを当てました！")
+                                appModel.multiplayerGame.submitAnswer(modelID: gameManager.targetId)
+                                // 配置した端末では同期処理が即時反映されるため、目の前へ移動する演出も開始する。
+                                if gameManager.hasFoundObject {
+                                    presentCorrectAnswer()
                                 }
                             }
+                        } else {
+                            correctTargetHitStartedAt = nil
                         }
-                        wasPointing = isPointingNow
                     }
                 }
             } catch {
@@ -429,6 +442,7 @@ struct ImmersiveView: View {
         .onDisappear {
             latestIndexTipPosition = nil
             feedbackTargetPosition = nil
+            correctTargetHitStartedAt = nil
             gameManager.playAgain()
         }
     }

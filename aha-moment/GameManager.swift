@@ -46,11 +46,9 @@ class GameManager {
         "obj4": -90,    // 例: obj4は回転なしにしたい場合
     ]
     private let defaultYRotationDegrees: Float = 180        // 今後モデルが増えたら、ここの配列に追加するだけでOK
+    /// マルチプレイの座標共有を短時間で検証する間は obj1 だけを読み込む。
     let modelDefinitions: [AhaModelDef] = [
         AhaModelDef(id: "obj1", original: "model3.usdz", altered: "model3_alt.usdz"),
-        AhaModelDef(id: "obj2", original: "model_tape.usdz", altered: "model_tape_alt.usdz"),
-        AhaModelDef(id: "obj3", original: "model_fab.usdz", altered: "model_fab.usdz"),
-        AhaModelDef(id: "obj4", original: "model_bottole.usdz", altered: "model_bottole.usdz"),
     ]
     
     var targetId: String = "" // 今回ランダムに変化する正解のID

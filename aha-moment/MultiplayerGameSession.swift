@@ -100,9 +100,19 @@ final class MultiplayerGameSession {
         hostPeerID == nil || isHosting
     }
 
+    /// 画面では「配置する人」と表現し、ホストという役割を操作させない。
+    var hasPlacementOwner: Bool { hostPeerID != nil }
+
     func attach(gameManager: GameManager, rpcModel: RPCModel) {
         self.gameManager = gameManager
         self.rpcModel = rpcModel
+    }
+
+    /// 実物へ最初に重ね合わせる人が、配置とゲーム進行の決定権を持つ。
+    /// 通信上のホストは必要だが、利用者にホスト選択を要求しない。
+    func beginPlacement() {
+        guard hostPeerID == nil else { return }
+        becomeHost()
     }
 
     /// ゲームホストが選んだ相手と、両端末の ImmersiveRPCKit 座標合わせを同時に開始する。
@@ -184,6 +194,25 @@ final class MultiplayerGameSession {
                 .resetPeer,
                 to: otherPeerID
             ))
+        }
+    }
+
+    /// Immersive RPC Kit 標準 UI が座標変換行列を保存した後に呼ぶ。
+    /// 配置した端末は確定配置を送信し、もう一方は自動的に受信を要求する。
+    func coordinateSharingDidPrepare() {
+        guard gameCoordinateTransforms?.session.state == .prepared else { return }
+        if isHosting {
+            sendAuthoritativePlacement(to: .all)
+            return
+        }
+
+        // 両端末の「設定を完了する」を押す時刻には差があるため、短時間だけ再試行する。
+        joinExistingHost()
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(700))
+            self?.joinExistingHost()
+            try? await Task.sleep(for: .milliseconds(800))
+            self?.joinExistingHost()
         }
     }
 
