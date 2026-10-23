@@ -28,6 +28,7 @@ private final class InitialPlacementPublishStore {
     var isQueued = false
 }
 
+@MainActor
 struct ImmersiveView: View {
     @Environment(GameManager.self) var gameManager
     @Environment(AppModel.self) private var appModel
@@ -98,12 +99,13 @@ struct ImmersiveView: View {
                !initialPlacementPublishStore.hasPublished,
                !initialPlacementPublishStore.isQueued {
                 // RealityView の update 中に @State を直接変更すると警告になるため、
-                // 次のメインループで配置配信とフラグ更新を行う。
+                // MainActor の次の実行機会で配置配信とフラグ更新を行う。
                 initialPlacementPublishStore.isQueued = true
-                DispatchQueue.main.async {
-                    publishCurrentPlacement()
-                    initialPlacementPublishStore.hasPublished = true
-                    initialPlacementPublishStore.isQueued = false
+                Task { @MainActor in
+                    await Task.yield()
+                    self.publishCurrentPlacement()
+                    self.initialPlacementPublishStore.hasPublished = true
+                    self.initialPlacementPublishStore.isQueued = false
                 }
             }
             updateMenuPresentation()
