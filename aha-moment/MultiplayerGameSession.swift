@@ -111,8 +111,15 @@ final class MultiplayerGameSession {
     /// 実物へ最初に重ね合わせる人が、配置とゲーム進行の決定権を持つ。
     /// 通信上のホストは必要だが、利用者にホスト選択を要求しない。
     func beginPlacement() {
-        guard hostPeerID == nil else { return }
-        becomeHost()
+        guard hostPeerID == nil, let gameManager, let rpcModel else { return }
+        let placementOwnerID = rpcModel.mcPeerIDUUIDWrapper.mine.hash
+        // 配置開始は正解選択ではない。ゲームを開始する瞬間に改めてランダム選択する。
+        publish(AhaRoundSnapshot(
+            hostPeerID: placementOwnerID,
+            roundID: UUID(),
+            targetID: gameManager.targetId,
+            phase: .setup
+        ))
     }
 
     /// ゲームホストが選んだ相手と、両端末の ImmersiveRPCKit 座標合わせを同時に開始する。
@@ -324,10 +331,12 @@ final class MultiplayerGameSession {
 
     private func startRoundAsHost() {
         guard let snapshot = latestSnapshot, snapshot.phase == .setup else { return }
+        // 配置作業中ではなく、ゲーム開始時に正解をランダムに決定する。
+        let targetID = gameManager?.prepareMultiplayerRound() ?? snapshot.targetID
         publish(AhaRoundSnapshot(
             hostPeerID: snapshot.hostPeerID,
             roundID: snapshot.roundID,
-            targetID: snapshot.targetID,
+            targetID: targetID,
             phase: .running
         ))
     }

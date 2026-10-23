@@ -22,6 +22,12 @@ private final class HandGestureStore {
     var wasPalmFacingPlayer = false
 }
 
+/// RealityView の更新中に SwiftUI の State を変更しないための配置配信フラグ。
+private final class InitialPlacementPublishStore {
+    var hasPublished = false
+    var isQueued = false
+}
+
 struct ImmersiveView: View {
     @Environment(GameManager.self) var gameManager
     @Environment(AppModel.self) private var appModel
@@ -47,7 +53,7 @@ struct ImmersiveView: View {
     @State private var menuEntityStore = MenuEntityStore()
     @State private var handGestureStore = HandGestureStore()
     @State private var feedbackTargetPosition: SIMD3<Float>?
-    @State private var hasPublishedInitialPlacement = false
+    @State private var initialPlacementPublishStore = InitialPlacementPublishStore()
     
     var body: some View {
         RealityView { content, attachments in
@@ -89,9 +95,16 @@ struct ImmersiveView: View {
             if gameManager.isCalibrated,
                appModel.multiplayerGame.canEditPlacement,
                loadedPairs.count == gameManager.modelDefinitions.count,
-               !hasPublishedInitialPlacement {
-                publishCurrentPlacement()
-                hasPublishedInitialPlacement = true
+               !initialPlacementPublishStore.hasPublished,
+               !initialPlacementPublishStore.isQueued {
+                // RealityView の update 中に @State を直接変更すると警告になるため、
+                // 次のメインループで配置配信とフラグ更新を行う。
+                initialPlacementPublishStore.isQueued = true
+                DispatchQueue.main.async {
+                    publishCurrentPlacement()
+                    initialPlacementPublishStore.hasPublished = true
+                    initialPlacementPublishStore.isQueued = false
+                }
             }
             updateMenuPresentation()
             // 毎フレーム全ペアを更新する。次の問題では前回の正解モデルも必ず変化前へ戻る。
@@ -437,7 +450,8 @@ struct ImmersiveView: View {
         .onAppear {
             appModel.multiplayerGame.attach(gameManager: gameManager, rpcModel: appModel.rpcModel)
             gameManager.restartCalibration()
-            hasPublishedInitialPlacement = false
+            initialPlacementPublishStore.hasPublished = false
+            initialPlacementPublishStore.isQueued = false
         }
         .onDisappear {
             latestIndexTipPosition = nil
