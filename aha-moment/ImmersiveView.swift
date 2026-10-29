@@ -21,6 +21,12 @@ private final class HandGestureStore {
     var wasPalmFacingPlayer = false
 }
 
+/// 実配置座標のログを、配置開始ごとに一度だけ出すための保持領域。
+private final class PlacementDebugStore {
+    var lastLoggedRequest = -1
+    var lastWaitingRequest = -1
+}
+
 struct ImmersiveView: View {
     @Environment(GameManager.self) var gameManager
     
@@ -44,21 +50,34 @@ struct ImmersiveView: View {
     @State private var directOcclusionBoxStore = DirectOcclusionBoxStore()
     @State private var menuEntityStore = MenuEntityStore()
     @State private var handGestureStore = HandGestureStore()
+    @State private var placementDebugStore = PlacementDebugStore()
     @State private var feedbackTargetPosition: SIMD3<Float>?
     
     var body: some View {
         RealityView { content, attachments in
+            print("🧭 [配置方式] \(gameManager.placementMode.title)")
             for def in gameManager.modelDefinitions {
                 let pair = AhaObjectPair(id: def.id)
                 await pair.loadModels(originalName: def.original, alteredName: def.altered)
 
                 content.add(pair.rootEntity)
-                // 4点キャリブレーションが終わるまでモデルは表示しない。
+                // 座標変換モードでは4点キャリブレーションまで非表示にする。
                 pair.rootEntity.isEnabled = false
                 
                 loadedPairs[def.id] = pair
                 
                 print("🌍 [ロード完了] \(def.id) ローカル位置: \(pair.rootEntity.position)")
+
+                // RealityViewの初期化中に@Stateへ保存したペアは、直後にupdateクロージャが
+                // 再評価されない場合がある。比較用の「座標変換なし」はここで確実に配置する。
+                if gameManager.placementMode == .untransformed,
+                   let position = gameManager.calibratedPosition(for: def.id) {
+                    pair.rootEntity.setPosition(position, relativeTo: nil)
+                    pair.rootEntity.scale = gameManager.scale(for: def.id)
+                    pair.rootEntity.orientation = gameManager.orientation(for: def.id)
+                    pair.rootEntity.isEnabled = true
+                    print("🧭 [実配置座標] \(def.id): \(position)（座標変換なし・読込直後に配置）")
+                }
             }
             
             if let uiEntity = attachments.entity(for: "GameUI") {
@@ -93,7 +112,7 @@ struct ImmersiveView: View {
         } attachments: {
             Attachment(id: "GameUI") {
                 ZStack {
-                    if !gameManager.isCalibrated {
+                    if !gameManager.isReadyForPlacement {
                         VStack(spacing: 16) {
                             Text("基準点 \(gameManager.nextCalibrationPointNumber) / 4")
                                 .font(.title)
@@ -107,6 +126,10 @@ struct ImmersiveView: View {
                         .glassBackgroundEffect()
                     } else {
                         VStack(spacing: 14) {
+                            Text(gameManager.placementMode == .calibrated
+                                 ? "基準点による座標変換済み"
+                                 : "座標変換なし：研究室座標をそのまま配置中")
+                                .font(.caption)
                             if gameManager.isOcclusionBoxPlacementMode {
                                 Text("40 cm のオクルージョンボックスを棚に重ねるようにドラッグしてください")
                                     .font(.body)
@@ -181,7 +204,7 @@ struct ImmersiveView: View {
             DragGesture(minimumDistance: 10)
                 .targetedToAnyEntity()
                 .onChanged { value in
-                    guard gameManager.isCalibrated, !gameManager.isPositionLocked else { return }
+                    guard gameManager.isReadyForPlacement, !gameManager.isPositionLocked else { return }
 
                     // オクルージョンボックスは配置モード中だけ、仮想物体と同じ操作で直接動かせる。
                     if gameManager.isOcclusionBoxPlacementMode,
@@ -216,7 +239,7 @@ struct ImmersiveView: View {
                 .simultaneously(with: MagnifyGesture())
                 .targetedToAnyEntity()
                 .onChanged { value in
-                    guard !gameManager.isCalibrated, !gameManager.isPositionLocked else { return }
+                    guard gameManager.isReadyForPlacement, !gameManager.isPositionLocked else { return }
                     if let targetRoot = findRootEntity(for: value.entity) {
                         
                         if initialOrientations[targetRoot.id] == nil {
@@ -318,8 +341,10 @@ struct ImmersiveView: View {
 
                     await MainActor.run {
                         latestIndexTipPosition = tipPos
-                        gameManager.updateCalibrationFingerPosition(tipPos)
-                        if gameManager.isCalibrated,
+                        if gameManager.placementMode == .calibrated {
+                            gameManager.updateCalibrationFingerPosition(tipPos)
+                        }
+                        if gameManager.isReadyForPlacement,
                            palmFacesPlayer,
                            !handGestureStore.wasPalmFacingPlayer {
                             gameManager.requestMenuPresentation()
@@ -329,7 +354,7 @@ struct ImmersiveView: View {
 
                     // 配置確定前はレーザーを表示・判定しない。
                     // キャリブレーション中は静止した指先だけを記録する。
-                    guard gameManager.isCalibrated, gameManager.isPositionLocked else {
+                    guard gameManager.isReadyForPlacement, gameManager.isPositionLocked else {
                         await MainActor.run {
                             laserEntity.isEnabled = false
                             correctTargetHitStartedAt = nil
@@ -414,7 +439,7 @@ struct ImmersiveView: View {
         .realityViewLayoutBehavior(.fixedSize)
         .volumeBaseplateVisibility(.hidden)
         .onAppear {
-            gameManager.restartCalibration()
+            gameManager.restartPlacement()
         }
         .onDisappear {
             latestIndexTipPosition = nil
@@ -569,6 +594,48 @@ struct ImmersiveView: View {
             pair.rootEntity.scale = gameManager.scale(for: modelID)
             pair.rootEntity.orientation = gameManager.orientation(for: modelID)
             pair.rootEntity.isEnabled = true
+        }
+
+        logInitialObjectPlacementsIfNeeded()
+    }
+
+    /// 「ロード完了」時点のローカル座標ではなく、実際に代入したワールド座標を出力する。
+    private func logInitialObjectPlacementsIfNeeded() {
+        guard placementDebugStore.lastLoggedRequest != gameManager.placementDebugRequest,
+              loadedPairs.count == gameManager.modelDefinitions.count else { return }
+
+        guard gameManager.isReadyForPlacement else {
+            guard placementDebugStore.lastWaitingRequest != gameManager.placementDebugRequest else { return }
+            placementDebugStore.lastWaitingRequest = gameManager.placementDebugRequest
+            print("🧭 [実配置座標] 未配置: 方式は基準点で座標変換。4点の取得完了を待機中です")
+            return
+        }
+
+        placementDebugStore.lastLoggedRequest = gameManager.placementDebugRequest
+        let modeDescription = gameManager.placementMode == .calibrated
+            ? "基準点で座標変換"
+            : "座標変換なし（研究室座標をそのまま使用）"
+        print("🧭 [実配置座標] 方式: \(modeDescription)")
+
+        let deviceTransform = worldTracking.queryDeviceAnchor(atTimestamp: CACurrentMediaTime())?.originFromAnchorTransform
+        let devicePosition = deviceTransform.map {
+            SIMD3<Float>($0.columns.3.x, $0.columns.3.y, $0.columns.3.z)
+        }
+        let deviceForward = deviceTransform.map {
+            -normalize(SIMD3<Float>($0.columns.2.x, $0.columns.2.y, $0.columns.2.z))
+        }
+
+        for definition in gameManager.modelDefinitions {
+            guard let pair = loadedPairs[definition.id] else { continue }
+            let position = pair.rootEntity.position(relativeTo: nil)
+            if let devicePosition, let deviceForward {
+                let offset = position - devicePosition
+                let distanceFromDevice = length(offset)
+                let forwardDistance = dot(offset, deviceForward)
+                print("🧭 [実配置座標] \(definition.id): \(position), 距離 \(distanceFromDevice)m, 前方成分 \(forwardDistance)m")
+            } else {
+                print("🧭 [実配置座標] \(definition.id): \(position)（デバイス位置は未取得）")
+            }
         }
     }
 

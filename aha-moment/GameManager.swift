@@ -8,6 +8,21 @@ struct AhaModelDef {
     let altered: String
 }
 
+/// 発表用に、実空間との対応付けを行うかを明示的に切り替える。
+enum PlacementMode: String, CaseIterable, Identifiable {
+    case calibrated
+    case untransformed
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .calibrated: "基準点で座標変換"
+        case .untransformed: "座標変換なし（起動時に配置）"
+        }
+    }
+}
+
 @Observable
 class GameManager {
     private static let placementStoragePrefix = "localPlacementV2_"
@@ -54,11 +69,14 @@ class GameManager {
     ]
     
     var targetId: String = "" // 今回ランダムに変化する正解のID
+    var placementMode: PlacementMode = .calibrated
     var isPositionLocked = false
     var hasFoundObject = false
     var transitionProgress: Float = 0.0
     var isMenuVisible = true
     private(set) var menuPresentationRequest = 0
+    /// ImmersiveView が初回配置ログを出すタイミングを識別するための番号。
+    private(set) var placementDebugRequest = 0
     private var transitionTask: Task<Void, Never>?
 
     private(set) var calibrationPoints: [SIMD3<Float>] = []
@@ -101,8 +119,8 @@ class GameManager {
         pickRandomTarget()
     }
 
-    /// Immersive Space を開くたびに呼び、前回のAR座標系を破棄する。
-    func restartCalibration() {
+    /// 選択した方式で配置を最初から始める。
+    func restartPlacement() {
         calibrationPoints.removeAll()
         isCalibrated = false
         isAdjustmentMode = false
@@ -115,11 +133,28 @@ class GameManager {
         transitionProgress = 0
         isMenuVisible = true
         menuPresentationRequest += 1
+        placementDebugRequest += 1
         transitionTask?.cancel()
         transitionTask = nil
         lastCapturedFingerPosition = nil
         isWaitingForFingerToMove = false
         resetCalibrationFingerTracking()
+    }
+
+    /// Immersive Space を開くたびに呼び、前回のAR座標系を破棄する。
+    func restartCalibration() {
+        restartPlacement()
+    }
+
+    func setPlacementMode(_ mode: PlacementMode) {
+        guard placementMode != mode else { return }
+        placementMode = mode
+        restartPlacement()
+    }
+
+    /// 座標変換なしモードでは、研究室座標をそのままImmersive Spaceの座標へ渡す。
+    var isReadyForPlacement: Bool {
+        placementMode == .untransformed || isCalibrated
     }
 
     /// 人差し指が物理的な基準点で静止したことを検出し、先端座標を自動取得する。
@@ -196,17 +231,29 @@ class GameManager {
     }
 
     func calibratedPosition(for modelID: String) -> SIMD3<Float>? {
-        guard isCalibrated, let laboratoryPosition = laboratoryObjectPositions[modelID] else { return nil }
-        let homogeneousPosition = laboratoryToARTransform * SIMD4(laboratoryPosition, 1)
-        let basePosition = SIMD3(homogeneousPosition.x, homogeneousPosition.y, homogeneousPosition.z)
+        guard let laboratoryPosition = laboratoryObjectPositions[modelID] else { return nil }
+        let basePosition: SIMD3<Float>
+        switch placementMode {
+        case .calibrated:
+            guard isCalibrated else { return nil }
+            let homogeneousPosition = laboratoryToARTransform * SIMD4(laboratoryPosition, 1)
+            basePosition = SIMD3(homogeneousPosition.x, homogeneousPosition.y, homogeneousPosition.z)
+        case .untransformed:
+            basePosition = laboratoryPosition
+        }
         return basePosition + (positionAdjustments[modelID] ?? .zero)
     }
 
     /// 微調整モードでドラッグした最終ワールド座標を、基準配置からの差分として保存する。
     func savePositionAdjustment(_ worldPosition: SIMD3<Float>, for modelID: String) {
-        guard isCalibrated, let laboratoryPosition = laboratoryObjectPositions[modelID] else { return }
-        let homogeneousPosition = laboratoryToARTransform * SIMD4(laboratoryPosition, 1)
-        let basePosition = SIMD3(homogeneousPosition.x, homogeneousPosition.y, homogeneousPosition.z)
+        guard isReadyForPlacement, let laboratoryPosition = laboratoryObjectPositions[modelID] else { return }
+        let basePosition: SIMD3<Float>
+        if placementMode == .calibrated {
+            let homogeneousPosition = laboratoryToARTransform * SIMD4(laboratoryPosition, 1)
+            basePosition = SIMD3(homogeneousPosition.x, homogeneousPosition.y, homogeneousPosition.z)
+        } else {
+            basePosition = laboratoryPosition
+        }
         positionAdjustments[modelID] = worldPosition - basePosition
         print("🔧 \(modelID) 微調整: \(positionAdjustments[modelID]!)")
     }
@@ -240,7 +287,7 @@ class GameManager {
     var calibrationOrientation: simd_quatf {
         // simd_quatf には SDK によって `.identity` が定義されないため、
         // 明示的なゼロ回転を使う。
-        guard isCalibrated else {
+        guard placementMode == .calibrated, isCalibrated else {
             return simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
         }
         let matrix = laboratoryToARTransform
