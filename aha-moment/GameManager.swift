@@ -31,9 +31,9 @@ class GameManager {
 
     // 🌟 追加: モデルごとの拡大率（未指定のIDはdefaultScaleを使う）
     private let laboratoryObjectScales: [String: Float] = [
-        "obj1": 1.0 / 2.5,
-        "obj2": 1.0 / 3.0,
-        "obj3": 1.0 / 2.8,
+        "obj1": 1.0 / 5.0,
+        "obj2": 1.0 / 5.0,
+        "obj3": 1.0 / 3.0,
         "obj4": 1.0 / 2.8,
     ]
     private let defaultScale: Float = 1.0 / 3.0
@@ -41,16 +41,16 @@ class GameManager {
     // 🌟 追加: モデルごとのY軸回転角（度数）。未指定のIDはdefaultYRotationDegreesを使う
     private let laboratoryObjectYRotationDegrees: [String: Float] = [
         "obj1": 0,
-        "obj2": 180,
+        "obj2": 0,
         "obj3": 270,   // 例: obj3だけ90度に変更したい場合
         "obj4": -90,    // 例: obj4は回転なしにしたい場合
     ]
     private let defaultYRotationDegrees: Float = 180        // 今後モデルが増えたら、ここの配列に追加するだけでOK
     /// 読み込む USDZ モデル。変更後の `_alt` 版だけを使用する。
     let modelDefinitions: [AhaModelDef] = [
-        AhaModelDef(id: "obj1", original: "model_poke_alt.usdz", altered: "model_poke_alt.usdz"),
-        AhaModelDef(id: "obj2", original: "model_ship_alt.usdz", altered: "model_ship_alt.usdz"),
-        AhaModelDef(id: "obj3", original: "model_mushi_alt.usdz", altered: "model_mushi_alt.usdz"),
+        AhaModelDef(id: "obj1", original: "model_poke.usdz", altered: "model_poke_alt.usdz"),
+        AhaModelDef(id: "obj2", original: "model_ship.usdz", altered: "model_ship_alt.usdz"),
+        AhaModelDef(id: "obj3", original: "model_mushi.usdz", altered: "model_mushi_alt.usdz"),
     ]
     
     var targetId: String = "" // 今回変化する正解のID
