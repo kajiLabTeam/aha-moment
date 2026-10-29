@@ -76,6 +76,22 @@ struct AhaOcclusionBoxPlacement: Codable, Sendable {
 struct AhaPlacementSnapshot: Codable, Sendable {
     let objects: [AhaObjectPlacement]
     let occlusionBoxes: [AhaOcclusionBoxPlacement]
+    /// 座標共有の精度を目視確認するための、球＋立方体マーカーのルート変換。
+    let coordinateValidationMarker: AhaTransformMatrix?
+
+    init(
+        objects: [AhaObjectPlacement],
+        occlusionBoxes: [AhaOcclusionBoxPlacement],
+        coordinateValidationMarker: simd_float4x4? = nil
+    ) {
+        self.objects = objects
+        self.occlusionBoxes = occlusionBoxes
+        if let coordinateValidationMarker {
+            self.coordinateValidationMarker = AhaTransformMatrix(coordinateValidationMarker)
+        } else {
+            self.coordinateValidationMarker = nil
+        }
+    }
 }
 
 /// ゲーム進行の唯一の決定者。ホストだけがスナップショットを配信し、参加者は要求のみ送る。
@@ -199,6 +215,7 @@ final class MultiplayerGameSession {
 
     func resetCoordinateSharing() {
         guard isHosting, let rpcModel else { return }
+        gameManager?.clearCoordinateValidationMarker()
         let otherPeerID = coordinateOtherPeerID
         _ = rpcModel.run(localOnly: CoordinateTransformEntity.localRequest(.resetPeer))
         if let otherPeerID {
@@ -230,6 +247,8 @@ final class MultiplayerGameSession {
 
         print("🧭 [座標共有][変換完成] otherPeer=\(peerID), affineMatrix=\(affineMatrix)")
         if isHosting {
+            // RealityView がホスト空間に検証マーカーを生成し、次の配置配信で送る。
+            gameManager?.requestCoordinateValidationMarker()
             print("🧭 [配置同期][送信開始] 配置担当端末が変換済み配置を全端末へ送ります")
             sendAuthoritativePlacement(to: .all)
             return
@@ -286,7 +305,7 @@ final class MultiplayerGameSession {
         // Aさんが単独で配置した後、ゲームホストを選ぶケースに備え、
         // 接続前でもこの端末の候補配置を保持しておく。
         authoritativePlacement = placement
-        print("🧭 [配置同期][正本を保存] objects=\(placement.objects.coordinateLog), boxes=\(placement.occlusionBoxes.count), isPlacementOwner=\(isHosting)")
+        print("🧭 [配置同期][正本を保存] objects=\(placement.objects.coordinateLog), boxes=\(placement.occlusionBoxes.count), marker=\(placement.coordinateValidationMarker.coordinateLog), isPlacementOwner=\(isHosting)")
         guard isHosting else {
             print("🧭 [配置同期][送信待機] この端末は配置担当ではありません")
             return
@@ -317,7 +336,7 @@ final class MultiplayerGameSession {
         }
 
         let peers = rpcModel.mcPeerIDUUIDWrapper.standby.map(\.hash)
-        print("🧭 [配置同期][送信] target=\(String(describing: target)), peers=\(peers), objects=\(authoritativePlacement.objects.coordinateLog), boxes=\(authoritativePlacement.occlusionBoxes.count)")
+        print("🧭 [配置同期][送信] target=\(String(describing: target)), peers=\(peers), objects=\(authoritativePlacement.objects.coordinateLog), boxes=\(authoritativePlacement.occlusionBoxes.count), marker=\(authoritativePlacement.coordinateValidationMarker.coordinateLog)")
         let results = rpcModel.run(
             transforming: target,
             AhaGameEntity.self,
@@ -407,12 +426,11 @@ final class MultiplayerGameSession {
 
     private func startRoundAsHost() {
         guard let snapshot = latestSnapshot, snapshot.phase == .setup else { return }
-        // 配置作業中ではなく、ゲーム開始時に正解をランダムに決定する。
-        let targetID = gameManager?.prepareMultiplayerRound() ?? snapshot.targetID
+        // setup 時に決めた正解をそのまま開始する。
         publish(AhaRoundSnapshot(
             hostPeerID: snapshot.hostPeerID,
             roundID: snapshot.roundID,
-            targetID: targetID,
+            targetID: snapshot.targetID,
             phase: .running
         ))
     }
@@ -500,7 +518,7 @@ final class MultiplayerGameSession {
             print("🧭 [配置同期][自端末への適用を省略] 配置担当の正本を維持します")
             return .success(())
         }
-        print("🧭 [配置同期][受信・適用] objects=\(placement.objects.coordinateLog), boxes=\(placement.occlusionBoxes.count)")
+        print("🧭 [配置同期][受信・適用] objects=\(placement.objects.coordinateLog), boxes=\(placement.occlusionBoxes.count), marker=\(placement.coordinateValidationMarker.coordinateLog)")
         gameManager?.applySharedPlacement(placement)
         return .success(())
     }
@@ -513,6 +531,14 @@ private extension Array where Element == AhaObjectPlacement {
             return "\(placement.objectID)=(\(p.x), \(p.y), \(p.z))"
         }
         .joined(separator: ", ")
+    }
+}
+
+private extension Optional where Wrapped == AhaTransformMatrix {
+    var coordinateLog: String {
+        guard let matrix = self else { return "none" }
+        let p = matrix.simdMatrix.columns.3
+        return "(\(p.x), \(p.y), \(p.z))"
     }
 }
 
@@ -575,7 +601,14 @@ struct AhaGameEntity: RPCEntity {
                         matrix: affineMatrix * $0.matrix.simdMatrix
                     )
                 }
-                return .applyPlacement(.init(objects: objects, occlusionBoxes: boxes))
+                let marker = placement.coordinateValidationMarker.map {
+                    affineMatrix * $0.simdMatrix
+                }
+                return .applyPlacement(.init(
+                    objects: objects,
+                    occlusionBoxes: boxes,
+                    coordinateValidationMarker: marker
+                ))
             default:
                 return self
             }

@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/kanakanho/ImmersiveRPCKit",
       "state" : {
-        "branch" : "main",
-        "revision" : "34cb9fe0cee9304507c10fb889f2b3b8ca74d7d9"
+        "branch" : "feat/improve-finger-alignment-accuracy",
+        "revision" : "95e9ac11c5c164152f94db3517f937f30438bfd6"
       }
     }
   ],

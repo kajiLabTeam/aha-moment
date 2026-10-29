@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B73210CD3092F047004F26ED /* model_poke.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B73210CC3092F047004F26ED /* model_poke.usdz */; };
+		B73210CF3092F050004F26ED /* model_poke_alt.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B73210CE3092F050004F26ED /* model_poke_alt.usdz */; };
+		B73210D13092F0B0004F26ED /* model_ship.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B73210D03092F0B0004F26ED /* model_ship.usdz */; };
+		B73210D33092F0BC004F26ED /* model_ship_alt.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B73210D23092F0BC004F26ED /* model_ship_alt.usdz */; };
+		B73210D53092F116004F26ED /* model_mushi.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B73210D43092F116004F26ED /* model_mushi.usdz */; };
+		B73210D73092F11D004F26ED /* model_mushi_alt.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B73210D63092F11D004F26ED /* model_mushi_alt.usdz */; };
 		B733265E301C62E4001C8873 /* RealityKitContent in Frameworks */ = {isa = PBXBuildFile; productRef = B733265D301C62E4001C8873 /* RealityKitContent */; };
 		B7332681301C636B001C8873 /* ImmersiveRPCKit in Frameworks */ = {isa = PBXBuildFile; productRef = B7332680301C636B001C8873 /* ImmersiveRPCKit */; };
 		B733268530207E72001C8873 /* model3.usdz in Resources */ = {isa = PBXBuildFile; fileRef = B733268430207E72001C8873 /* model3.usdz */; };
@@ -29,6 +35,12 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B73210CC3092F047004F26ED /* model_poke.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_poke.usdz; sourceTree = "<group>"; };
+		B73210CE3092F050004F26ED /* model_poke_alt.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_poke_alt.usdz; sourceTree = "<group>"; };
+		B73210D03092F0B0004F26ED /* model_ship.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_ship.usdz; sourceTree = "<group>"; };
+		B73210D23092F0BC004F26ED /* model_ship_alt.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_ship_alt.usdz; sourceTree = "<group>"; };
+		B73210D43092F116004F26ED /* model_mushi.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_mushi.usdz; sourceTree = "<group>"; };
+		B73210D63092F11D004F26ED /* model_mushi_alt.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = model_mushi_alt.usdz; sourceTree = "<group>"; };
 		B7332658301C62E4001C8873 /* aha-moment.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "aha-moment.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B733265C301C62E4001C8873 /* RealityKitContent */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = RealityKitContent; sourceTree = "<group>"; };
 		B733266C301C62E6001C8873 /* aha-momentTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "aha-momentTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -101,6 +113,12 @@
 				B7957F1B304A895600229EF6 /* model_tape_alt.usdz */,
 				B7ACD2FD30344D7500C200C4 /* model_fab.usdz */,
 				B7ACD2FF3034640300C200C4 /* model_bottole.usdz */,
+				B73210CC3092F047004F26ED /* model_poke.usdz */,
+				B73210CE3092F050004F26ED /* model_poke_alt.usdz */,
+				B73210D03092F0B0004F26ED /* model_ship.usdz */,
+				B73210D23092F0BC004F26ED /* model_ship_alt.usdz */,
+				B73210D43092F116004F26ED /* model_mushi.usdz */,
+				B73210D63092F11D004F26ED /* model_mushi_alt.usdz */,
 			);
 			sourceTree = "<group>";
 		};
@@ -218,8 +236,14 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B73210CF3092F050004F26ED /* model_poke_alt.usdz in Resources */,
 				B7957F1C304A895600229EF6 /* model_tape_alt.usdz in Resources */,
+				B73210D53092F116004F26ED /* model_mushi.usdz in Resources */,
+				B73210D13092F0B0004F26ED /* model_ship.usdz in Resources */,
+				B73210D33092F0BC004F26ED /* model_ship_alt.usdz in Resources */,
 				B7ACD3003034640300C200C4 /* model_bottole.usdz in Resources */,
+				B73210D73092F11D004F26ED /* model_mushi_alt.usdz in Resources */,
+				B73210CD3092F047004F26ED /* model_poke.usdz in Resources */,
 				B7ACD2FC30344D6600C200C4 /* model_tape.usdz in Resources */,
 				B733268730207E81001C8873 /* model3_sized_red.usdz in Resources */,
 				B733268530207E72001C8873 /* model3.usdz in Resources */,
@@ -529,7 +553,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/kanakanho/ImmersiveRPCKit";
 			requirement = {
-				branch = main;
+				branch = "feat/improve-finger-alignment-accuracy";
 				kind = branch;
 			};
 		};

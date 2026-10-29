@@ -46,12 +46,15 @@ class GameManager {
         "obj4": -90,    // 例: obj4は回転なしにしたい場合
     ]
     private let defaultYRotationDegrees: Float = 180        // 今後モデルが増えたら、ここの配列に追加するだけでOK
-    /// マルチプレイの座標共有を短時間で検証する間は obj1 だけを読み込む。
+    /// 読み込む USDZ モデル。変更後の `_alt` 版だけを使用する。
     let modelDefinitions: [AhaModelDef] = [
-        AhaModelDef(id: "obj1", original: "model3.usdz", altered: "model3_alt.usdz"),
+        AhaModelDef(id: "obj1", original: "model_poke_alt.usdz", altered: "model_poke_alt.usdz"),
+        AhaModelDef(id: "obj2", original: "model_ship_alt.usdz", altered: "model_ship_alt.usdz"),
+        AhaModelDef(id: "obj3", original: "model_mushi_alt.usdz", altered: "model_mushi_alt.usdz"),
     ]
     
-    var targetId: String = "" // 今回ランダムに変化する正解のID
+    var targetId: String = "" // 今回変化する正解のID
+    private var nextTargetIndex = 0
     var isPositionLocked = false
     var hasFoundObject = false
     var transitionProgress: Float = 0.0
@@ -73,6 +76,9 @@ class GameManager {
     /// これがある間は参加端末自身の4点キャリブレーション結果より優先する。
     private(set) var sharedObjectTransforms: [String: simd_float4x4] = [:]
     private(set) var sharedOcclusionBoxTransforms: [UUID: simd_float4x4] = [:]
+    private(set) var sharedCoordinateValidationMarkerTransform: simd_float4x4?
+    /// ホストが座標共有完了後に、目視確認用マーカーを生成する要求。
+    var isCoordinateValidationMarkerRequested = false
 
     var hasSharedPlacement: Bool { !sharedObjectTransforms.isEmpty }
     private var stableFingerPosition: SIMD3<Float>?
@@ -104,9 +110,7 @@ class GameManager {
     private var savedRotations: [String: simd_quatf] = [:]
     private var savedScales: [String: SIMD3<Float>] = [:]
     
-    init() {
-        pickRandomTarget()
-    }
+    init() {}
 
     /// Immersive Space を開くたびに呼び、前回のAR座標系を破棄する。
     func restartCalibration() {
@@ -119,6 +123,8 @@ class GameManager {
         positionAdjustments.removeAll()
         sharedObjectTransforms.removeAll()
         sharedOcclusionBoxTransforms.removeAll()
+        sharedCoordinateValidationMarkerTransform = nil
+        isCoordinateValidationMarkerRequested = false
         isPositionLocked = false
         hasFoundObject = false
         transitionProgress = 0
@@ -233,12 +239,29 @@ class GameManager {
         sharedOcclusionBoxTransforms = Dictionary(
             uniqueKeysWithValues: snapshot.occlusionBoxes.map { ($0.id, $0.matrix.simdMatrix) }
         )
+        sharedCoordinateValidationMarkerTransform = snapshot.coordinateValidationMarker?.simdMatrix
         // 参加端末ではローカル基準点取得を求めず、共有済み配置を表示する。
         isCalibrated = !sharedObjectTransforms.isEmpty
         isAdjustmentMode = false
         isOcclusionBoxPlacementMode = false
         requestedOcclusionBoxCount = 0
-        print("🌐 ホストの配置を受信: objects=\(sharedObjectTransforms.count), boxes=\(sharedOcclusionBoxTransforms.count)")
+        let markerLog: String
+        if let marker = sharedCoordinateValidationMarkerTransform {
+            let p = marker.columns.3
+            markerLog = "(\(p.x), \(p.y), \(p.z))"
+        } else {
+            markerLog = "none"
+        }
+        print("🌐 ホストの配置を受信: objects=\(sharedObjectTransforms.count), boxes=\(sharedOcclusionBoxTransforms.count), marker=\(markerLog)")
+    }
+
+    func requestCoordinateValidationMarker() {
+        isCoordinateValidationMarkerRequested = true
+    }
+
+    func clearCoordinateValidationMarker() {
+        isCoordinateValidationMarkerRequested = false
+        sharedCoordinateValidationMarkerTransform = nil
     }
 
     func sharedTransform(for modelID: String) -> simd_float4x4? {
@@ -295,12 +318,12 @@ class GameManager {
         return simd_quatf(angle: radians, axis: SIMD3(0, 1, 0))
     }
     
-    // 正解をランダムに選ぶ
-    func pickRandomTarget() {
-        if let randomModel = modelDefinitions.randomElement() {
-            targetId = randomModel.id
-            print("今回の正解オブジェクト: \(targetId)")
-        }
+    /// 正解をモデル定義順に循環させる（obj1 → obj2 → obj3 → obj1 ...）。
+    func pickNextTarget() {
+        guard !modelDefinitions.isEmpty else { return }
+        targetId = modelDefinitions[nextTargetIndex].id
+        nextTargetIndex = (nextTargetIndex + 1) % modelDefinitions.count
+        print("今回の正解オブジェクト: \(targetId)")
     }
 
     /// ホストが次の問題を決めるときに使う。微調整値は保持したまま変化前へ戻す。
@@ -310,7 +333,7 @@ class GameManager {
         transitionProgress = 0
         isPositionLocked = false
         hasFoundObject = false
-        pickRandomTarget()
+        pickNextTarget()
         return targetId
     }
 
@@ -376,7 +399,6 @@ class GameManager {
         isPositionLocked = false
         hasFoundObject = false
         transitionProgress = 0
-        pickRandomTarget()
         requestMenuPresentation()
     }
     /*

@@ -13,6 +13,12 @@ private final class DirectOcclusionBoxStore {
     var identifiers: [UInt64: UUID] = [:]
 }
 
+/// 座標共有完了後に、両端末で同じ物理位置を確認するための一時マーカー。
+private final class CoordinateValidationMarkerStore {
+    let rootEntity = Entity()
+    var markerEntity: Entity?
+}
+
 private final class MenuEntityStore {
     var entity: Entity?
     var lastPresentationRequest = -1
@@ -45,6 +51,7 @@ struct ImmersiveView: View {
     private let correctTargetHoldDuration: TimeInterval = 2.0
     
     @State private var directOcclusionBoxStore = DirectOcclusionBoxStore()
+    @State private var coordinateValidationMarkerStore = CoordinateValidationMarkerStore()
     @State private var menuEntityStore = MenuEntityStore()
     @State private var handGestureStore = HandGestureStore()
     @State private var feedbackTargetPosition: SIMD3<Float>?
@@ -82,10 +89,12 @@ struct ImmersiveView: View {
             content.add(laserEntity)
             
             content.add(directOcclusionBoxStore.rootEntity)
+            content.add(coordinateValidationMarkerStore.rootEntity)
             
         } update: { content, attachments in
             applyCalibratedObjectPositions()
             syncDirectOcclusionBoxes()
+            syncCoordinateValidationMarker()
             updateMenuPresentation()
         } attachments: {
             Attachment(id: "GameUI") {
@@ -643,6 +652,64 @@ struct ImmersiveView: View {
         }
     }
 
+    /// ホストが共有完了直後に生成した球＋立方体を、参加端末では受信済み変換で再現する。
+    private func syncCoordinateValidationMarker() {
+        if let sharedTransform = gameManager.sharedCoordinateValidationMarkerTransform {
+            let marker = coordinateValidationMarkerStore.markerEntity ?? makeCoordinateValidationMarker()
+            if marker.parent == nil {
+                coordinateValidationMarkerStore.rootEntity.addChild(marker)
+                coordinateValidationMarkerStore.markerEntity = marker
+            }
+            marker.setTransformMatrix(sharedTransform, relativeTo: nil)
+            marker.isEnabled = true
+            return
+        }
+
+        guard gameManager.isCoordinateValidationMarkerRequested,
+              appModel.multiplayerGame.canEditPlacement
+        else {
+            coordinateValidationMarkerStore.markerEntity?.isEnabled = false
+            return
+        }
+
+        // ホストは基準オブジェクトの少し上に生成する。ここで生成された完全変換を次のRPCへ載せる。
+        if coordinateValidationMarkerStore.markerEntity == nil {
+            let marker = makeCoordinateValidationMarker()
+            let basePosition = loadedPairs[gameManager.targetId]?.rootEntity.position(relativeTo: nil)
+                ?? loadedPairs.values.first?.rootEntity.position(relativeTo: nil)
+                ?? SIMD3<Float>(0, 1, -1)
+            marker.setPosition(basePosition + SIMD3<Float>(0, 0.22, 0), relativeTo: nil)
+            coordinateValidationMarkerStore.rootEntity.addChild(marker)
+            coordinateValidationMarkerStore.markerEntity = marker
+            print("🧭 [座標共有確認] ホストに検証マーカーを生成: \(marker.position(relativeTo: nil))")
+            publishCurrentPlacement()
+        }
+        coordinateValidationMarkerStore.markerEntity?.isEnabled = true
+    }
+
+    private func makeCoordinateValidationMarker() -> Entity {
+        let marker = Entity()
+        marker.name = "CoordinateValidationMarker"
+
+        let sphere = ModelEntity(
+            mesh: .generateSphere(radius: 0.06),
+            materials: [UnlitMaterial(color: .magenta)]
+        )
+        sphere.name = "CoordinateValidationSphere"
+        sphere.position = SIMD3<Float>(0, 0.08, 0)
+
+        let box = ModelEntity(
+            mesh: .generateBox(size: 0.10),
+            materials: [UnlitMaterial(color: .yellow)]
+        )
+        box.name = "CoordinateValidationBox"
+        box.position = SIMD3<Float>(0.14, 0, 0)
+
+        marker.addChild(sphere)
+        marker.addChild(box)
+        return marker
+    }
+
     /// 正解モデルだけを変化後モデルへ徐々に切り替える。
     /// SwiftUI の RealityView.update 中ではなく、観測値の変更後に実行する。
     private func applyModelProgress() {
@@ -671,7 +738,12 @@ struct ImmersiveView: View {
             )
         }
         appModel.multiplayerGame.updateAuthoritativePlacement(
-            .init(objects: objects, occlusionBoxes: boxes)
+            .init(
+                objects: objects,
+                occlusionBoxes: boxes,
+                coordinateValidationMarker: coordinateValidationMarkerStore.markerEntity?
+                    .transformMatrix(relativeTo: nil)
+            )
         )
     }
 
