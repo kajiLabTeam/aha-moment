@@ -11,6 +11,15 @@ class AhaObjectPair {
     
     init(id: String) {
         self.id = id
+
+        // mixed Immersive Space では、実環境（棚・机など）の奥にある仮想物体を
+        // システムの環境深度で隠す。ルートに設定することで、original / altered
+        // 両モデルとその子 Entity に同じ遮蔽設定を適用する。
+        rootEntity.components.set(
+            EnvironmentBlendingComponent(
+                preferredBlendingMode: .occluded(by: .surroundings)
+            )
+        )
     }
     
     // 2つのUSDZファイルを非同期で同時に読み込む関数
