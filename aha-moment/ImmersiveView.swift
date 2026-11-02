@@ -63,7 +63,7 @@ struct ImmersiveView: View {
                 await pair.loadModels(originalName: def.original, alteredName: def.altered)
 
                 content.add(pair.rootEntity)
-                // 4点キャリブレーションが終わるまでモデルは表示しない。
+                // 3点キャリブレーションが終わるまでモデルは表示しない。
                 pair.rootEntity.isEnabled = false
                 
                 loadedPairs[def.id] = pair
@@ -101,7 +101,7 @@ struct ImmersiveView: View {
                 ZStack {
                     if !gameManager.isCalibrated {
                         VStack(spacing: 16) {
-                            Text("基準点 \(gameManager.nextCalibrationPointNumber) / 4")
+                            Text("基準点 \(gameManager.nextCalibrationPointNumber) / \(gameManager.calibrationPointTotal)")
                                 .font(.title)
                             Text(gameManager.calibrationInstruction)
                                 .font(.body)

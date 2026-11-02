@@ -12,13 +12,12 @@ struct AhaModelDef {
 class GameManager {
     private static let placementStoragePrefix = "localPlacementV2_"
 
-    /// 研究室で定義した基準点。最後の点は、依頼中で二度「原点3」と記載された
-    /// `(0.5, -0.085, 0)` を原点4として扱う。
+    /// 研究室で定義した基準点。原点・Y方向・Z方向の3点で座標系を定める。
+    /// X方向はY軸とZ軸の外積から求めるため、床面の4点目は不要。
     private let laboratoryReferencePoints: [SIMD3<Float>] = [
         SIMD3(0, 0, 0),
         SIMD3(0, 0.4, 0),
         SIMD3(0, 0, 0.42),
-        SIMD3(0.5, -0.085, 0),
     ]
 
     /// 各モデルの研究室座標（単位: m）。指定座標を5倍している。
@@ -73,7 +72,7 @@ class GameManager {
     private var positionAdjustments: [String: SIMD3<Float>] = [:]
 
     /// 参加端末がホストから受け取った、すでに自端末座標系へ変換済みの最終配置。
-    /// これがある間は参加端末自身の4点キャリブレーション結果より優先する。
+    /// これがある間は参加端末自身の3点キャリブレーション結果より優先する。
     private(set) var sharedObjectTransforms: [String: simd_float4x4] = [:]
     private(set) var sharedOcclusionBoxTransforms: [UUID: simd_float4x4] = [:]
     private(set) var sharedCoordinateValidationMarkerTransform: simd_float4x4?
@@ -97,6 +96,7 @@ class GameManager {
     }
 
     var calibrationPointCount: Int { calibrationPoints.count }
+    var calibrationPointTotal: Int { laboratoryReferencePoints.count }
 
     var calibrationInstruction: String {
         isWaitingForFingerToMove
@@ -180,7 +180,7 @@ class GameManager {
         stableFingerSampleCount = 0
     }
 
-    /// 指先で指定したAR座標を、原点1〜4の順に記録する。
+    /// 指先で指定したAR座標を、原点・Y方向・Z方向の順に記録する。
     private func captureCalibrationPoint(_ point: SIMD3<Float>) {
         guard !isCalibrated, calibrationPoints.count < laboratoryReferencePoints.count else { return }
 
@@ -192,7 +192,7 @@ class GameManager {
             from: laboratoryReferencePoints,
             to: calibrationPoints
         ) else {
-            print("⚠️ キャリブレーションに失敗しました。4点を取り直してください。")
+            print("⚠️ キャリブレーションに失敗しました。3点を取り直してください。")
             calibrationPoints.removeAll()
             resetCalibrationFingerTracking()
             return
@@ -202,7 +202,7 @@ class GameManager {
         isCalibrated = true
         // キャリブレーション完了後の設定メニューは、手のひらジェスチャーで呼び出す。
         isMenuVisible = false
-        print("✅ 4点キャリブレーション完了")
+        print("✅ 3点キャリブレーション完了")
     }
 
     private func beginCalibrationFingerTracking(at position: SIMD3<Float>, date: Date) {
@@ -289,7 +289,7 @@ class GameManager {
         menuPresentationRequest += 1
     }
 
-    /// 4点キャリブレーションで得た棚座標系の向き。生成するボックスを棚と平行にする。
+    /// 3点キャリブレーションで得た棚座標系の向き。生成するボックスを棚と平行にする。
     var calibrationOrientation: simd_quatf {
         // simd_quatf には SDK によって `.identity` が定義されないため、
         // 明示的なゼロ回転を使う。
@@ -466,13 +466,13 @@ class GameManager {
         "\(Self.placementStoragePrefix)\(valueType)_\(id)"
     }
 
-    /// 4点から回転と並進だけの変換を作る。手指で取得した基準点に少し誤差があっても、
+    /// 3点から回転と並進だけの変換を作る。手指で取得した基準点に少し誤差があっても、
     /// オブジェクトに不自然な拡大縮小やせん断が掛からず、実空間に対して安定する。
     private func makeRigidTransform(
         from source: [SIMD3<Float>],
         to destination: [SIMD3<Float>]
     ) -> simd_float4x4? {
-        guard source.count == 4, destination.count == 4 else { return nil }
+        guard source.count == 3, destination.count == 3 else { return nil }
 
         guard let sourceBasis = orthonormalBasis(from: source),
               let destinationBasis = orthonormalBasis(from: destination) else { return nil }
@@ -488,7 +488,7 @@ class GameManager {
         ))
     }
 
-    /// 基準点1を原点、2をY方向、3をZ方向、4をX方向の符号確認に利用する。
+    /// 基準点1を原点、2をY方向、3をZ方向に利用する。X方向は右手系の外積で求める。
     private func orthonormalBasis(from points: [SIMD3<Float>]) -> simd_float3x3? {
         let origin = points[0]
         let yRaw = points[1] - origin
@@ -498,14 +498,8 @@ class GameManager {
         let yAxis = normalize(yRaw)
         let zOrthogonal = zRaw - yAxis * dot(zRaw, yAxis)
         guard length(zOrthogonal) > 0.001 else { return nil }
-        var zAxis = normalize(zOrthogonal)
-        var xAxis = normalize(cross(yAxis, zAxis))
-
-        // 基準点4が正のX側に来るように符号をそろえる。
-        if dot(points[3] - origin, xAxis) < 0 {
-            xAxis = -xAxis
-            zAxis = -zAxis
-        }
+        let zAxis = normalize(zOrthogonal)
+        let xAxis = normalize(cross(yAxis, zAxis))
 
         return simd_float3x3(columns: (xAxis, yAxis, zAxis))
     }
