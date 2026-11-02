@@ -425,12 +425,17 @@ final class MultiplayerGameSession {
     }
 
     private func startRoundAsHost() {
-        guard let snapshot = latestSnapshot, snapshot.phase == .setup else { return }
-        // setup 時に決めた正解をそのまま開始する。
+        guard let snapshot = latestSnapshot,
+              snapshot.phase == .setup,
+              let gameManager else { return }
+
+        // 配置開始時は正解をまだ選ばない。ゲーム開始時にホストだけが
+        // obj1 → obj2 → obj3 → obj1... の順で選び、全端末へ配信する。
+        let targetID = gameManager.prepareMultiplayerRound()
         publish(AhaRoundSnapshot(
             hostPeerID: snapshot.hostPeerID,
             roundID: snapshot.roundID,
-            targetID: snapshot.targetID,
+            targetID: targetID,
             phase: .running
         ))
     }
