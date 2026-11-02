@@ -48,8 +48,8 @@ class GameManager {
     private let defaultYRotationDegrees: Float = 180        // 今後モデルが増えたら、ここの配列に追加するだけでOK
     /// 読み込む USDZ モデル。変更後の `_alt` 版だけを使用する。
     let modelDefinitions: [AhaModelDef] = [
-        AhaModelDef(id: "obj1", original: "model_poke.usdz", altered: "model_poke_alt.usdz"),
-        AhaModelDef(id: "obj2", original: "model_ship.usdz", altered: "model_ship_alt.usdz"),
+        AhaModelDef(id: "obj1", original: "model3.usdz", altered: "model3_alt.usdz"),
+        AhaModelDef(id: "obj2", original: "model_poke.usdz", altered: "model_poke_alt.usdz"),
         AhaModelDef(id: "obj3", original: "model_mushi.usdz", altered: "model_mushi_alt.usdz"),
     ]
     
