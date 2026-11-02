@@ -46,7 +46,7 @@ class GameManager {
         "obj4": -90,    // 例: obj4は回転なしにしたい場合
     ]
     private let defaultYRotationDegrees: Float = 180        // 今後モデルが増えたら、ここの配列に追加するだけでOK
-    /// 読み込む USDZ モデル。変更後の `_alt` 版だけを使用する。
+    /// 読み込む USDZ モデルの通常版と変更後の `_alt` 版のペア。
     let modelDefinitions: [AhaModelDef] = [
         AhaModelDef(id: "obj1", original: "model3.usdz", altered: "model3_alt.usdz"),
         AhaModelDef(id: "obj2", original: "model_poke.usdz", altered: "model_poke_alt.usdz"),
